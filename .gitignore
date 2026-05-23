@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Claude-Konfiguration (lokale Pfade, nicht für Veröffentlichung)
+.claude/
+
+# Interne Planungsnotizen
+00-material/
