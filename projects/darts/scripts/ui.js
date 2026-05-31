@@ -27,6 +27,19 @@ const DartsUI = (() => {
     requestAnimationFrame(frame);
   }
 
+  function namesHtml(count, lastNames) {
+    return Array.from({ length: count }, (_, i) => {
+      const v = lastNames[i] || `Spieler ${i + 1}`;
+      return `
+        <label class="name-row">
+          <span class="name-label">${i + 1}</span>
+          <input type="text" name="name-${i}" value="${escapeAttr(v)}"
+                 autocomplete="off" autocapitalize="words" spellcheck="false"
+                 inputmode="text" maxlength="20">
+        </label>`;
+    }).join('');
+  }
+
   function renderSetup(root, settings, onStart) {
     armedMultiplier = 1;
     resetAnimationState(null);
@@ -36,6 +49,7 @@ const DartsUI = (() => {
 
     root.innerHTML = `
       <section class="setup">
+        <img src="./assets/icons/icon-192.png" alt="" class="setup-icon">
         <h1>Schü's Darts Counter</h1>
         <form id="setup-form" novalidate>
           <fieldset>
@@ -55,7 +69,7 @@ const DartsUI = (() => {
             </div>
           </fieldset>
 
-          <fieldset id="names-box" class="names"></fieldset>
+          <fieldset id="names-box" class="names">${namesHtml(defaultCount, lastNames)}</fieldset>
 
           <fieldset>
             <legend>Out-Modus</legend>
@@ -80,25 +94,16 @@ const DartsUI = (() => {
       </section>
     `;
 
+    // Scroll-Reset nach Render (sicher gegen iOS-Scroll-Restoration).
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
+
     const form = root.querySelector('#setup-form');
     const namesBox = root.querySelector('#names-box');
 
-    function renderNames(count) {
-      namesBox.innerHTML = Array.from({ length: count }, (_, i) => {
-        const v = lastNames[i] || `Spieler ${i + 1}`;
-        return `
-          <label class="name-row">
-            <span class="name-label">${i + 1}</span>
-            <input type="text" name="name-${i}" value="${escapeAttr(v)}"
-                   autocomplete="off" autocapitalize="words" spellcheck="false"
-                   inputmode="text" maxlength="20">
-          </label>`;
-      }).join('');
-    }
-    renderNames(defaultCount);
-
     form.addEventListener('change', (e) => {
-      if (e.target.name === 'count') renderNames(+e.target.value);
+      if (e.target.name === 'count') {
+        namesBox.innerHTML = namesHtml(+e.target.value, lastNames);
+      }
     });
 
     const submitBtn = form.querySelector('button[type="submit"]');
@@ -323,7 +328,6 @@ const DartsUI = (() => {
     if (endBtn)
       endBtn.addEventListener('click', () => {
         armedMultiplier = 1;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
         handlers.onEndTurn();
       });
 

@@ -64,6 +64,9 @@
           haptic(15);
         }
         showGame();
+        requestAnimationFrame(() =>
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        );
       },
       onNewGame: () => {
         showSetup();
