@@ -101,6 +101,14 @@ const DartsUI = (() => {
       if (e.target.name === 'count') renderNames(+e.target.value);
     });
 
+    const submitBtn = form.querySelector('button[type="submit"]');
+    // iOS-Fix: aktive Eingabe vor dem Tap blurren, damit die Tastatur sich
+    // schließt und der erste Klick nicht durch das Layout-Shift verloren geht.
+    submitBtn.addEventListener('pointerdown', () => {
+      const ae = document.activeElement;
+      if (ae && typeof ae.blur === 'function' && ae !== submitBtn) ae.blur();
+    });
+
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const fd = new FormData(form);
@@ -201,7 +209,7 @@ const DartsUI = (() => {
     const numpad = `<div class="numpad mode-${armedMultiplier}">${numpadButtons}</div>`;
 
     const specials = `
-      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>Miss</button>
+      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>0</button>
       <button type="button" class="spec" data-special="bull" ${canRecord ? '' : 'disabled'}>Bull <small>25</small></button>
       <button type="button" class="spec" data-special="bullseye" ${canRecord ? '' : 'disabled'}>Bullseye <small>50</small></button>
     `;
@@ -211,37 +219,41 @@ const DartsUI = (() => {
       !hasWinner &&
       !state.bust &&
       state.currentTurnDarts.length < MAX_DARTS_PER_TURN;
+    const stickyActions = hasWinner || state.bust ||
+      state.currentTurnDarts.length >= MAX_DARTS_PER_TURN;
 
     const actionRow = hasWinner
       ? `
-        <button type="button" class="btn btn-secondary" id="btn-undo" ${undoDisabled ? 'disabled' : ''}>↶ Undo</button>
+        <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${undoDisabled ? 'disabled' : ''} aria-label="Letzten Wurf rückgängig">↶</button>
         <button type="button" class="btn btn-primary" id="btn-newgame">Neues Spiel</button>`
       : `
-        <button type="button" class="btn btn-secondary" id="btn-undo" ${undoDisabled ? 'disabled' : ''}>↶ Undo</button>
+        <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${undoDisabled ? 'disabled' : ''} aria-label="Letzten Wurf rückgängig">↶</button>
         <button type="button" class="btn btn-primary" id="btn-end" ${endDisabled ? 'disabled' : ''}>Weiter</button>`;
 
     root.innerHTML = `
       <section class="game">
-        <header class="scoreboard players-${state.players.length}">
-          ${scoreboard}
-        </header>
+        <div class="sticky-top">
+          <header class="scoreboard players-${state.players.length}">
+            ${scoreboard}
+          </header>
 
-        <div class="turn">
-          <div class="slots">${slots}</div>
-          <div class="status-line">${statusLine}</div>
+          <div class="turn">
+            <div class="slots">${slots}</div>
+            <div class="status-line">${statusLine}</div>
+          </div>
         </div>
 
         ${
           hasWinner
             ? ''
             : `
-          <div class="multipliers">${multipliers}</div>
+          <div class="multipliers tab-strip">${multipliers}</div>
           ${numpad}
           <div class="specials">${specials}</div>
         `
         }
 
-        <div class="actions">${actionRow}</div>
+        <div class="actions ${stickyActions ? 'sticky-actions' : ''}">${actionRow}</div>
 
         <footer class="game-footer">
           <button type="button" class="link" id="btn-quit">Spiel beenden</button>

@@ -20,6 +20,13 @@
     state = null;
     clearGame();
     resetAnimationState(null);
+    if (
+      document.activeElement &&
+      typeof document.activeElement.blur === 'function'
+    ) {
+      document.activeElement.blur();
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' });
     const settings = loadSettings();
     renderSetup(root, settings, ({ names, outMode }) => {
       saveSettings({

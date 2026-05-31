@@ -24,6 +24,12 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+button,
+input,
+label {
+  touch-action: manipulation;
+}
+
 html,
 body {
   margin: 0;
@@ -199,12 +205,35 @@ legend {
 
 /* ===== Game screen ===== */
 .game {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto auto auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
   padding: var(--gap);
   flex: 1;
   min-height: 100dvh;
+}
+
+.sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin: calc(var(--gap) * -1) calc(var(--gap) * -1) 0;
+  padding: var(--gap) var(--gap) var(--gap);
+  box-shadow: 0 6px 12px -10px rgba(0, 0, 0, 0.6);
+}
+
+.actions.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--bg);
+  margin: 0 calc(var(--gap) * -1) 0;
+  padding: var(--gap) var(--gap) calc(env(safe-area-inset-bottom, 0px) + var(--gap));
+  box-shadow: 0 -6px 12px -10px rgba(0, 0, 0, 0.6);
 }
 
 .scoreboard {
@@ -373,34 +402,35 @@ legend {
   font-size: 1.05rem;
 }
 
-.multipliers {
+.multipliers.tab-strip {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--gap);
+  gap: 4px;
+  background: var(--surface);
+  padding: 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
 }
 
 .mult {
-  min-height: 52px;
-  background: var(--surface);
+  min-height: 48px;
+  background: transparent;
   color: var(--muted);
   font-weight: 600;
-  border: 2px solid transparent;
+  border-radius: calc(var(--radius) - 4px);
 }
 
 .mult.on[data-m="1"] {
   background: var(--mult-single);
   color: #1a1206;
-  border-color: var(--mult-single);
 }
 .mult.on[data-m="2"] {
   background: var(--mult-double);
   color: #062013;
-  border-color: var(--mult-double);
 }
 .mult.on[data-m="3"] {
   background: var(--mult-triple);
   color: #2a0606;
-  border-color: var(--mult-triple);
 }
 
 .numpad {
@@ -453,29 +483,47 @@ legend {
   font-weight: 500;
 }
 
+.spec[data-special="bull"] {
+  color: var(--mult-double);
+}
+
+.spec[data-special="bullseye"] {
+  color: var(--mult-triple);
+}
+
 .actions {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: auto 1fr;
   gap: var(--gap);
+}
+
+.btn-icon {
+  min-width: var(--tap);
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
 }
 
 .game-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 6px 2px;
+  padding: 8px 4px calc(env(safe-area-inset-bottom, 0px) + 18px);
   font-size: 0.8rem;
   color: var(--muted);
+  gap: var(--gap);
 }
 
 .link {
   background: transparent;
   color: var(--muted);
-  padding: 6px 0;
-  font-size: 0.85rem;
+  padding: 12px 14px;
+  font-size: 0.95rem;
   text-decoration: underline;
-  min-height: auto;
-  border-radius: 4px;
+  min-height: 44px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .mode-tag {
