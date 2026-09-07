@@ -464,8 +464,10 @@ const DartsUI = (() => {
           hasWinner
             ? ''
             : `
-          <div class="multipliers tab-strip">${multipliers}</div>
-          ${numpad}
+          <div class="input-group">
+            <div class="multipliers tab-strip">${multipliers}</div>
+            ${numpad}
+          </div>
           <div class="specials">${specials}</div>
         `
         }

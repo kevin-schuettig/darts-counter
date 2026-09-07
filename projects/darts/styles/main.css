@@ -661,14 +661,25 @@ legend {
   font-size: 1.05rem;
 }
 
+/* Gemeinsame Box: Schalter (Single/Double/Triple) + Zahlen 1–20 gruppiert. */
+.input-group {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
 .multipliers.tab-strip {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 4px;
-  background: var(--surface);
+  background: var(--surface-2);
   padding: 4px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  border: none;
 }
 
 .mult {
@@ -699,7 +710,7 @@ legend {
 }
 
 .num {
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
   font-size: 1.4rem;
   font-weight: 700;
@@ -720,7 +731,7 @@ legend {
 }
 
 .num:not(:disabled):active {
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
   transform: scale(0.92);
 }
 

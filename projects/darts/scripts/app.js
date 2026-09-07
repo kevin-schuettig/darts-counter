@@ -27,6 +27,24 @@
     } catch {}
   }
 
+  // Animierter Scroll nach oben – eigene rAF-Animation statt behavior:'smooth'
+  // (nicht überall zuverlässig). Nach dem Re-Render aufrufen.
+  function scrollTopSmooth() {
+    requestAnimationFrame(() => {
+      const start = window.scrollY || document.documentElement.scrollTop || 0;
+      if (start <= 0) return;
+      const startTime = performance.now();
+      const duration = 320;
+      function step(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        window.scrollTo(0, Math.round(start * (1 - eased)));
+        if (t < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
   function applyTheme(mode) {
     const el = document.documentElement;
     if (mode === 'light' || mode === 'dark') el.setAttribute('data-theme', mode);
@@ -77,6 +95,7 @@
           resetAnimationState(state.players);
           persist();
           showGame();
+          scrollTopSmooth();
         },
         onThemeChange: (mode) => {
           saveTheme(mode);
@@ -98,12 +117,14 @@
         else if (state.bust) haptic([60, 40, 60]);
         else haptic(12);
         showGame();
+        scrollTopSmooth();
       },
       onUndo: () => {
         undoLastDart(state);
         persist();
         haptic(8);
         showGame();
+        scrollTopSmooth();
       },
       onEditDart: (index, dart) => {
         replaceDart(state, index, dart);
@@ -118,9 +139,7 @@
           haptic(15);
         }
         showGame();
-        requestAnimationFrame(() =>
-          window.scrollTo({ top: 0, behavior: 'smooth' })
-        );
+        scrollTopSmooth();
       },
       onNewGame: () => {
         showSetup();
