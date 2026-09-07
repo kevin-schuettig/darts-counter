@@ -1,22 +1,18 @@
 const DartsGame = (() => {
   const START_SCORE = 501;
-  const START_SCORES = [101, 301, 501, 701];
   const MAX_DARTS_PER_TURN = 3;
 
-  function createGame(playerNames, outMode = 'single', startScore = START_SCORE) {
-    const start = START_SCORES.includes(startScore) ? startScore : START_SCORE;
+  function createGame(playerNames, outMode = 'single') {
     return {
       outMode,
-      startScore: start,
       players: playerNames.map((name) => ({
         name,
-        score: start,
-        startScore: start,
+        score: START_SCORE,
         committedDarts: 0,
       })),
       currentPlayerIdx: 0,
       currentTurnDarts: [],
-      scoreAtTurnStart: start,
+      scoreAtTurnStart: START_SCORE,
       bust: false,
       winnerIdx: null,
     };
@@ -106,25 +102,8 @@ const DartsGame = (() => {
   function averageThreeDart(player, currentTurnDarts = 0) {
     const totalDarts = player.committedDarts + currentTurnDarts;
     if (totalDarts === 0) return null;
-    const base = player.startScore || START_SCORE;
-    const scored = base - player.score;
+    const scored = START_SCORE - player.score;
     return (scored / totalDarts) * 3;
-  }
-
-  // Ersetzt einen einzelnen Wurf der laufenden Aufnahme (manuelle Korrektur)
-  // und berechnet die Aufnahme komplett neu, damit Bust/Sieg konsistent bleiben.
-  function replaceDart(state, index, dart) {
-    if (index < 0 || index >= state.currentTurnDarts.length) return state;
-    const darts = state.currentTurnDarts.slice();
-    if (dart == null) darts.splice(index, 1);
-    else darts[index] = dart;
-
-    state.currentTurnDarts = [];
-    state.bust = false;
-    state.winnerIdx = null;
-    state.players[state.currentPlayerIdx].score = state.scoreAtTurnStart;
-    for (const d of darts) recordDart(state, d);
-    return state;
   }
 
   function turnIsOver(state) {
@@ -137,7 +116,6 @@ const DartsGame = (() => {
 
   return {
     START_SCORE,
-    START_SCORES,
     MAX_DARTS_PER_TURN,
     createGame,
     dartScore,
@@ -147,7 +125,6 @@ const DartsGame = (() => {
     canRecordDart,
     recordDart,
     undoLastDart,
-    replaceDart,
     endTurn,
     turnIsOver,
     averageThreeDart,

@@ -1,8 +1,6 @@
 const DartsStorage = (() => {
   const KEY_GAME = 'darts:current';
   const KEY_SETTINGS = 'darts:settings';
-  const KEY_THEME = 'darts:theme';
-  const VALID_THEMES = ['system', 'light', 'dark'];
 
   function saveGame(state) {
     try {
@@ -40,28 +38,5 @@ const DartsStorage = (() => {
     }
   }
 
-  function saveTheme(mode) {
-    try {
-      localStorage.setItem(KEY_THEME, VALID_THEMES.includes(mode) ? mode : 'system');
-    } catch {}
-  }
-
-  function loadTheme() {
-    try {
-      const raw = localStorage.getItem(KEY_THEME);
-      return VALID_THEMES.includes(raw) ? raw : 'system';
-    } catch {
-      return 'system';
-    }
-  }
-
-  return {
-    saveGame,
-    loadGame,
-    clearGame,
-    saveSettings,
-    loadSettings,
-    saveTheme,
-    loadTheme,
-  };
+  return { saveGame, loadGame, clearGame, saveSettings, loadSettings };
 })();

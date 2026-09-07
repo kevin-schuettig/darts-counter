@@ -1,17 +1,24 @@
 const DartsUI = (() => {
-  const { dartLabel, turnPoints, averageThreeDart, MAX_DARTS_PER_TURN } =
-    DartsGame;
+  const {
+    dartLabel,
+    dartScore,
+    turnPoints,
+    averageThreeDart,
+    MAX_DARTS_PER_TURN,
+  } = DartsGame;
 
   let armedMultiplier = 1;
   let lastTurnDartsLength = 0;
   let lastPlayerIdx = -1;
   let lastBust = false;
+  let lastTurnOver = false;
   let lastScoresShown = [];
 
   function resetAnimationState(players) {
     lastTurnDartsLength = 0;
     lastPlayerIdx = -1;
     lastBust = false;
+    lastTurnOver = false;
     lastScoresShown = players ? players.map((p) => p.score) : [];
   }
 
@@ -27,31 +34,69 @@ const DartsUI = (() => {
     requestAnimationFrame(frame);
   }
 
-  function namesHtml(count, lastNames) {
-    return Array.from({ length: count }, (_, i) => {
-      const v = lastNames[i] || `Spieler ${i + 1}`;
-      return `
-        <label class="name-row">
-          <span class="name-label">${i + 1}</span>
-          <input type="text" name="name-${i}" value="${escapeAttr(v)}"
-                 autocomplete="off" autocapitalize="words" spellcheck="false"
-                 inputmode="text" maxlength="20">
-        </label>`;
-    }).join('');
+  const START_SCORE_OPTIONS = [101, 301, 501, 701];
+
+  const ICON = {
+    grip:
+      '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">' +
+      '<circle cx="7" cy="4" r="1.5"/><circle cx="7" cy="10" r="1.5"/><circle cx="7" cy="16" r="1.5"/>' +
+      '<circle cx="13" cy="4" r="1.5"/><circle cx="13" cy="10" r="1.5"/><circle cx="13" cy="16" r="1.5"/></svg>',
+    clear:
+      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">' +
+      '<path d="M6 6l8 8M14 6l-8 8"/></svg>',
+    system:
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>' +
+      '<path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>',
+    light:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    dark:
+      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+      '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>',
+  };
+
+  function nameRowHtml(idx, value) {
+    return `
+      <div class="name-row" data-idx="${idx}">
+        <button type="button" class="drag-handle" tabindex="-1" aria-label="Reihenfolge ändern">${ICON.grip}</button>
+        <input type="text" placeholder="Spieler ${idx + 1}" value="${escapeAttr(value || '')}"
+               autocomplete="off" autocapitalize="words" spellcheck="false"
+               inputmode="text" enterkeyhint="done" maxlength="20">
+        <button type="button" class="name-clear" tabindex="-1" aria-label="Eingabe löschen">${ICON.clear}</button>
+      </div>`;
   }
 
-  function renderSetup(root, settings, onStart) {
+  function renderSetup(root, settings, theme, handlers) {
     armedMultiplier = 1;
     resetAnimationState(null);
-    const defaultOut = settings.outMode === 'double' ? 'double' : 'single';
-    const defaultCount = settings.lastCount || 2;
-    const lastNames = settings.lastNames || [];
+
+    const outMode = settings.outMode === 'double' ? 'double' : 'single';
+    let count = Math.min(4, Math.max(1, settings.lastCount || 2));
+    const startScore = START_SCORE_OPTIONS.includes(settings.lastStartScore)
+      ? settings.lastStartScore
+      : 501;
+    const currentTheme = ['system', 'light', 'dark'].includes(theme)
+      ? theme
+      : 'system';
+
+    // Quelle der Wahrheit für Namen (kann leer sein → Platzhalter greift).
+    const names = (settings.lastNames || []).slice(0, 4);
+    while (names.length < count) names.push('');
+
+    const themeItem = (val, label) => `
+      <label class="seg-item">
+        <input type="radio" name="theme" value="${val}" ${
+      val === currentTheme ? 'checked' : ''
+    }>
+        ${ICON[val]}
+        <span>${label}</span>
+      </label>`;
 
     root.innerHTML = `
       <section class="setup">
         <img src="./assets/icons/icon-192.png" alt="" class="setup-icon">
         <h1>Schü's Darts Counter</h1>
-        <form id="setup-form" novalidate>
+        <div id="setup-form">
           <fieldset>
             <legend>Spieler:innen</legend>
             <div class="seg" role="radiogroup">
@@ -60,7 +105,7 @@ const DartsUI = (() => {
                   (n) => `
                 <label class="seg-item">
                   <input type="radio" name="count" value="${n}" ${
-                    n === defaultCount ? 'checked' : ''
+                    n === count ? 'checked' : ''
                   }>
                   <span>${n}</span>
                 </label>`
@@ -69,61 +114,226 @@ const DartsUI = (() => {
             </div>
           </fieldset>
 
-          <fieldset id="names-box" class="names">${namesHtml(defaultCount, lastNames)}</fieldset>
+          <fieldset id="names-box" class="names"></fieldset>
+
+          <fieldset>
+            <legend>Startpunkte</legend>
+            <div class="field-select">
+              <select name="startScore" aria-label="Startpunkte">
+                ${START_SCORE_OPTIONS.map(
+                  (s) =>
+                    `<option value="${s}" ${
+                      s === startScore ? 'selected' : ''
+                    }>${s} Punkte</option>`
+                ).join('')}
+              </select>
+            </div>
+          </fieldset>
 
           <fieldset>
             <legend>Out-Modus</legend>
             <div class="seg" role="radiogroup">
               <label class="seg-item">
                 <input type="radio" name="out" value="single" ${
-                  defaultOut === 'single' ? 'checked' : ''
+                  outMode === 'single' ? 'checked' : ''
                 }>
                 <span>Single-Out</span>
               </label>
               <label class="seg-item">
                 <input type="radio" name="out" value="double" ${
-                  defaultOut === 'double' ? 'checked' : ''
+                  outMode === 'double' ? 'checked' : ''
                 }>
                 <span>Double-Out</span>
               </label>
             </div>
           </fieldset>
 
-          <button type="submit" class="btn btn-primary btn-big">Spiel starten</button>
-        </form>
+          <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
+        </div>
+
+        <div class="theme-switch">
+          <span class="legend-row">Darstellung</span>
+          <div class="theme-seg" role="radiogroup">
+            ${themeItem('system', 'System')}
+            ${themeItem('light', 'Hell')}
+            ${themeItem('dark', 'Dunkel')}
+          </div>
+        </div>
       </section>
     `;
 
-    // Scroll-Reset nach Render (sicher gegen iOS-Scroll-Restoration).
-    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'auto' }));
-
     const form = root.querySelector('#setup-form');
     const namesBox = root.querySelector('#names-box');
+    const startBtn = root.querySelector('#start-btn');
 
-    form.addEventListener('change', (e) => {
-      if (e.target.name === 'count') {
-        namesBox.innerHTML = namesHtml(+e.target.value, lastNames);
-      }
-    });
+    function rows() {
+      return Array.from(namesBox.querySelectorAll('.name-row'));
+    }
 
-    const submitBtn = form.querySelector('button[type="submit"]');
-    // iOS-Fix: aktive Eingabe vor dem Tap blurren, damit die Tastatur sich
-    // schließt und der erste Klick nicht durch das Layout-Shift verloren geht.
-    submitBtn.addEventListener('pointerdown', () => {
-      const ae = document.activeElement;
-      if (ae && typeof ae.blur === 'function' && ae !== submitBtn) ae.blur();
-    });
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const fd = new FormData(form);
-      const count = +fd.get('count');
-      const outMode = fd.get('out');
-      const names = Array.from({ length: count }, (_, i) => {
-        const v = (fd.get(`name-${i}`) || '').toString().trim();
-        return v || `Spieler ${i + 1}`;
+    function syncNamesFromDOM() {
+      rows().forEach((row, i) => {
+        const input = row.querySelector('input');
+        names[i] = input.value;
       });
-      onStart({ names, outMode });
+    }
+
+    function renderNames() {
+      namesBox.innerHTML = Array.from({ length: count }, (_, i) =>
+        nameRowHtml(i, names[i])
+      ).join('');
+    }
+
+    renderNames();
+
+    // --- Spieleranzahl ---
+    form.querySelectorAll('input[name="count"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        syncNamesFromDOM();
+        count = +radio.value;
+        while (names.length < count) names.push('');
+        renderNames();
+      });
+    });
+
+    // --- Löschen-X + Fokus-Sichtbarkeit (Delegation) ---
+    function refreshClear(row) {
+      const input = row.querySelector('input');
+      const show = document.activeElement === input && !!input.value.trim();
+      row.classList.toggle('can-clear', show);
+    }
+
+    namesBox.addEventListener('focusin', (e) => {
+      const row = e.target.closest('.name-row');
+      if (row) refreshClear(row);
+    });
+    namesBox.addEventListener('focusout', (e) => {
+      const row = e.target.closest('.name-row');
+      if (row) row.classList.remove('can-clear');
+    });
+    namesBox.addEventListener('input', (e) => {
+      const row = e.target.closest('.name-row');
+      if (!row) return;
+      const i = rows().indexOf(row);
+      if (i >= 0) names[i] = e.target.value;
+      refreshClear(row);
+    });
+
+    // --- Pointer-Interaktion (Löschen-X + Drag-Handle) ---
+    namesBox.addEventListener('pointerdown', (e) => {
+      const clearBtn = e.target.closest('.name-clear');
+      if (clearBtn) {
+        e.preventDefault(); // Fokus im Feld halten (Tastatur bleibt offen)
+        const row = clearBtn.closest('.name-row');
+        const input = row.querySelector('input');
+        const i = rows().indexOf(row);
+        input.value = '';
+        if (i >= 0) names[i] = '';
+        row.classList.remove('can-clear');
+        input.focus();
+        return;
+      }
+      const handle = e.target.closest('.drag-handle');
+      if (handle) startDrag(e, handle);
+    });
+
+    // --- Drag & Drop (pointer-basiert, touch-fähig) ---
+    function startDrag(e, handle) {
+      e.preventDefault();
+      const active = document.activeElement;
+      if (active && typeof active.blur === 'function') active.blur();
+
+      syncNamesFromDOM();
+      const rowEls = rows();
+      const dragged = handle.closest('.name-row');
+      let fromIdx = rowEls.indexOf(dragged);
+      let toIdx = fromIdx;
+      const rect = dragged.getBoundingClientRect();
+      const step = rect.height + 8; // Zeilenhöhe + gap
+      const startY = e.clientY;
+
+      dragged.classList.add('dragging');
+      rowEls.forEach((r) => {
+        if (r !== dragged) r.classList.add('drag-shift');
+      });
+
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {}
+
+      function onMove(ev) {
+        const dy = ev.clientY - startY;
+        dragged.style.transform = `translateY(${dy}px)`;
+        let next = fromIdx + Math.round(dy / step);
+        next = Math.max(0, Math.min(count - 1, next));
+        if (next !== toIdx) {
+          toIdx = next;
+          rowEls.forEach((r, i) => {
+            if (r === dragged) return;
+            let shift = 0;
+            if (fromIdx < toIdx && i > fromIdx && i <= toIdx) shift = -step;
+            else if (fromIdx > toIdx && i >= toIdx && i < fromIdx) shift = step;
+            r.style.transform = shift ? `translateY(${shift}px)` : '';
+          });
+        }
+      }
+
+      function onUp() {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        if (toIdx !== fromIdx) {
+          const moved = names.splice(fromIdx, 1)[0];
+          names.splice(toIdx, 0, moved);
+        }
+        renderNames(); // setzt Transforms/Klassen sauber zurück
+      }
+
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    }
+
+    // --- Theme-Umschalter ---
+    root.querySelectorAll('input[name="theme"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (radio.checked) handlers.onThemeChange(radio.value);
+      });
+    });
+
+    // --- Spiel starten (robust gegen den ersten-Tap-Bug) ---
+    let started = false;
+    function doStart() {
+      if (started) return;
+      started = true;
+      syncNamesFromDOM();
+      const finalNames = Array.from(
+        { length: count },
+        (_, i) => (names[i] || '').trim() || `Spieler ${i + 1}`
+      );
+      const out = form.querySelector('input[name="out"]:checked');
+      const sel = form.querySelector('select[name="startScore"]');
+      handlers.onStart({
+        names: finalNames,
+        outMode: out ? out.value : 'single',
+        startScore: sel ? +sel.value : 501,
+      });
+    }
+
+    // Kern-Fix des „erster Klick verpufft"-Bugs:
+    // Beim mousedown würde der Button Fokus bekommen → Safari scrollt ihn „in
+    // die Ansicht" → alles rutscht nach oben, der Button wandert unter dem
+    // Cursor weg, mouseup landet auf einem anderen Element → click feuert nicht.
+    // preventDefault auf mousedown verhindert genau diesen Fokus-Scroll; der
+    // click bleibt erhalten. (Kein <form>/type=submit und kein pointerup mehr.)
+    startBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    startBtn.addEventListener('click', doStart);
+
+    // Enter im Namensfeld startet ebenfalls.
+    namesBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.matches('input')) {
+        e.preventDefault();
+        doStart();
+      }
     });
   }
 
@@ -150,10 +360,14 @@ const DartsUI = (() => {
 
     const slots = Array.from({ length: MAX_DARTS_PER_TURN }, (_, i) => {
       const d = state.currentTurnDarts[i];
-      const cls = ['slot'];
-      if (d) cls.push('filled');
+      if (!d) return `<div class="slot"></div>`;
+      const cls = ['slot', 'filled', 'editable'];
       if (i === justFilledIdx) cls.push('just-filled');
-      return `<div class="${cls.join(' ')}">${d ? dartLabel(d) : ''}</div>`;
+      return `<button type="button" class="${cls.join(
+        ' '
+      )}" data-slot="${i}" aria-label="Wurf ${i + 1} korrigieren">${dartLabel(
+        d
+      )}</button>`;
     }).join('');
 
     const scoreboard = state.players
@@ -214,38 +428,36 @@ const DartsUI = (() => {
     const numpad = `<div class="numpad mode-${armedMultiplier}">${numpadButtons}</div>`;
 
     const specials = `
-      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>0</button>
+      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>Miss <small>0</small></button>
       <button type="button" class="spec" data-special="bull" ${canRecord ? '' : 'disabled'}>Bull <small>25</small></button>
       <button type="button" class="spec" data-special="bullseye" ${canRecord ? '' : 'disabled'}>Bullseye <small>50</small></button>
     `;
 
     const undoDisabled = state.currentTurnDarts.length === 0;
-    const endDisabled =
-      !hasWinner &&
-      !state.bust &&
-      state.currentTurnDarts.length < MAX_DARTS_PER_TURN;
-    const stickyActions = hasWinner || state.bust ||
+    const turnOver =
+      hasWinner ||
+      state.bust ||
       state.currentTurnDarts.length >= MAX_DARTS_PER_TURN;
+    // „Hereinfahren" nur beim Übergang von „läuft noch" → „fertig".
+    const slideIn = turnOver && !lastTurnOver;
 
-    const actionRow = hasWinner
-      ? `
-        <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${undoDisabled ? 'disabled' : ''} aria-label="Letzten Wurf rückgängig">↶</button>
-        <button type="button" class="btn btn-primary" id="btn-newgame">Neues Spiel</button>`
-      : `
-        <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${undoDisabled ? 'disabled' : ''} aria-label="Letzten Wurf rückgängig">↶</button>
-        <button type="button" class="btn btn-primary" id="btn-end" ${endDisabled ? 'disabled' : ''}>Weiter</button>`;
+    const primaryBtn = hasWinner
+      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Neues Spiel</button>`
+      : `<button type="button" class="btn btn-primary btn-weiter" id="btn-end">Weiter</button>`;
+
+    const quitBtn = hasWinner
+      ? ''
+      : `<button type="button" class="btn btn-secondary btn-quit" id="btn-quit">Spiel beenden</button>`;
 
     root.innerHTML = `
       <section class="game">
-        <div class="sticky-top">
-          <header class="scoreboard players-${state.players.length}">
-            ${scoreboard}
-          </header>
+        <header class="scoreboard players-${state.players.length}">
+          ${scoreboard}
+        </header>
 
-          <div class="turn">
-            <div class="slots">${slots}</div>
-            <div class="status-line">${statusLine}</div>
-          </div>
+        <div class="turn">
+          <div class="slots">${slots}</div>
+          <div class="status-line">${statusLine}</div>
         </div>
 
         ${
@@ -258,12 +470,21 @@ const DartsUI = (() => {
         `
         }
 
-        <div class="actions ${stickyActions ? 'sticky-actions' : ''}">${actionRow}</div>
+        <div class="action-row">
+          <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${
+            undoDisabled ? 'disabled' : ''
+          } aria-label="Letzten Wurf rückgängig">↶</button>
+          ${quitBtn}
+        </div>
+        <div class="mode-caption">${
+          state.outMode === 'double' ? 'Double-Out' : 'Single-Out'
+        }</div>
 
-        <footer class="game-footer">
-          <button type="button" class="link" id="btn-quit">Spiel beenden</button>
-          <span class="mode-tag">${state.outMode === 'double' ? 'Double-Out' : 'Single-Out'}</span>
-        </footer>
+        <div class="primary-bar ${turnOver ? 'show' : ''} ${
+      slideIn ? 'slide-in' : ''
+    }">
+          ${primaryBtn}
+        </div>
       </section>
     `;
 
@@ -282,6 +503,44 @@ const DartsUI = (() => {
     lastTurnDartsLength = state.currentTurnDarts.length;
     lastPlayerIdx = state.currentPlayerIdx;
     lastBust = state.bust;
+    lastTurnOver = turnOver;
+
+    // Einzelne Wurf-Felder per Nummerntastatur korrigieren (ohne Multiplikator).
+    root.querySelectorAll('.slot.editable').forEach((slotEl) => {
+      slotEl.addEventListener('click', () => {
+        const i = +slotEl.dataset.slot;
+        const d = state.currentTurnDarts[i];
+        if (!d) return;
+        const pts = dartScore(d);
+        slotEl.innerHTML = `<input class="slot-input" type="text" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done" maxlength="2" value="${pts}">`;
+        const input = slotEl.querySelector('input');
+        input.focus();
+        input.select();
+        let committed = false;
+        const commit = () => {
+          if (committed) return;
+          committed = true;
+          const raw = input.value.trim();
+          if (raw === '') {
+            handlers.onEditDart(i, null); // leeres Feld = Wurf entfernen
+            return;
+          }
+          const n = parseInt(raw, 10);
+          if (Number.isNaN(n) || n < 0 || n > 60) {
+            slotEl.textContent = dartLabel(d); // ungültig → zurücksetzen
+            return;
+          }
+          handlers.onEditDart(i, { value: n, multiplier: 1 });
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+          }
+        });
+      });
+    });
 
     if (canRecord) {
       root.querySelectorAll('.mult').forEach((btn) => {
@@ -334,9 +593,11 @@ const DartsUI = (() => {
     const newGameBtn = root.querySelector('#btn-newgame');
     if (newGameBtn) newGameBtn.addEventListener('click', handlers.onNewGame);
 
-    root.querySelector('#btn-quit').addEventListener('click', () => {
-      if (hasWinner || confirm('Spiel wirklich beenden?')) handlers.onNewGame();
-    });
+    const quitBtnEl = root.querySelector('#btn-quit');
+    if (quitBtnEl)
+      quitBtnEl.addEventListener('click', () => {
+        if (confirm('Spiel wirklich beenden?')) handlers.onNewGame();
+      });
   }
 
   function escapeHtml(s) {
