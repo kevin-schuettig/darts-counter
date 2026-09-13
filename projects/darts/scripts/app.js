@@ -1,6 +1,13 @@
 (() => {
-  const { createGame, recordDart, undoLastDart, replaceDart, endTurn, turnIsOver } =
-    DartsGame;
+  const {
+    createGame,
+    recordDart,
+    undoLastDart,
+    replaceDart,
+    endTurn,
+    turnIsOver,
+    averageThreeDart,
+  } = DartsGame;
   const {
     saveGame,
     loadGame,
@@ -9,11 +16,19 @@
     loadSettings,
     saveTheme,
     loadTheme,
+    loadTraining,
+    saveTrainingRun,
+    removeLatestTrainingRun,
+    clearTraining,
   } = DartsStorage;
   const { renderSetup, renderGame, resetAnimationState } = DartsUI;
 
   const root = document.getElementById('app');
   let state = null;
+
+  // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
+  // (service-worker.js) hochzaehlen.
+  const APP_VERSION = 'v6';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -30,6 +45,14 @@
   // Animierter Scroll nach oben – eigene rAF-Animation statt behavior:'smooth'
   // (nicht überall zuverlässig). Nach dem Re-Render aufrufen.
   function scrollTopSmooth() {
+    let reduced = false;
+    try {
+      reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {}
+    if (reduced) {
+      window.scrollTo(0, 0);
+      return;
+    }
     requestAnimationFrame(() => {
       const start = window.scrollY || document.documentElement.scrollTop || 0;
       if (start <= 0) return;
@@ -101,7 +124,13 @@
           saveTheme(mode);
           applyTheme(mode);
         },
-      }
+        onResetTraining: () => {
+          clearTraining();
+          showSetup();
+        },
+      },
+      loadTraining(),
+      APP_VERSION
     );
     // Genau einmal, synchron, an den Anfang – ohne rAF-Nachzügler, der den
     // ersten Tap auf „Spiel starten" verschluckt hat.
@@ -112,6 +141,24 @@
     renderGame(root, state, {
       onDart: (dart) => {
         recordDart(state, dart);
+        // Trainings-Aufzeichnung: nur Solo-Sieg, genau einmal pro Spiel.
+        if (
+          state.winnerIdx !== null &&
+          state.players.length === 1 &&
+          !state.trainingRecorded
+        ) {
+          const player = state.players[0];
+          const darts = player.committedDarts + state.currentTurnDarts.length;
+          const avg = averageThreeDart(player, state.currentTurnDarts.length);
+          saveTrainingRun({
+            date: new Date().toISOString(),
+            startScore: state.startScore,
+            outMode: state.outMode,
+            avg,
+            darts,
+          });
+          state.trainingRecorded = true;
+        }
         persist();
         if (state.winnerIdx !== null) haptic([100, 50, 100, 50, 200]);
         else if (state.bust) haptic([60, 40, 60]);
@@ -121,6 +168,16 @@
       },
       onUndo: () => {
         undoLastDart(state);
+        // Undo-Guard: nimmt der Undo den Solo-Siegerwurf zurueck, wird der
+        // gerade gespeicherte Trainingslauf wieder entfernt.
+        if (
+          state.trainingRecorded &&
+          state.winnerIdx === null &&
+          state.players.length === 1
+        ) {
+          removeLatestTrainingRun();
+          state.trainingRecorded = false;
+        }
         persist();
         haptic(8);
         showGame();

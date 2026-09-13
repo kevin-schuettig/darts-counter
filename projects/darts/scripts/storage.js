@@ -2,7 +2,9 @@ const DartsStorage = (() => {
   const KEY_GAME = 'darts:current';
   const KEY_SETTINGS = 'darts:settings';
   const KEY_THEME = 'darts:theme';
+  const KEY_TRAINING = 'darts:training';
   const VALID_THEMES = ['system', 'light', 'dark'];
+  const TRAINING_MAX = 10;
 
   function saveGame(state) {
     try {
@@ -55,6 +57,38 @@ const DartsStorage = (() => {
     }
   }
 
+  function loadTraining() {
+    try {
+      const raw = localStorage.getItem(KEY_TRAINING);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveTrainingRun(entry) {
+    try {
+      const list = loadTraining();
+      list.unshift(entry);
+      localStorage.setItem(KEY_TRAINING, JSON.stringify(list.slice(0, TRAINING_MAX)));
+    } catch {}
+  }
+
+  function removeLatestTrainingRun() {
+    try {
+      const list = loadTraining();
+      list.shift();
+      localStorage.setItem(KEY_TRAINING, JSON.stringify(list));
+    } catch {}
+  }
+
+  function clearTraining() {
+    try {
+      localStorage.removeItem(KEY_TRAINING);
+    } catch {}
+  }
+
   return {
     saveGame,
     loadGame,
@@ -63,5 +97,9 @@ const DartsStorage = (() => {
     loadSettings,
     saveTheme,
     loadTheme,
+    loadTraining,
+    saveTrainingRun,
+    removeLatestTrainingRun,
+    clearTraining,
   };
 })();

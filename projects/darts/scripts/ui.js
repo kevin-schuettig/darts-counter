@@ -4,6 +4,7 @@ const DartsUI = (() => {
     dartScore,
     turnPoints,
     averageThreeDart,
+    checkoutRoute,
     MAX_DARTS_PER_TURN,
   } = DartsGame;
 
@@ -22,8 +23,20 @@ const DartsUI = (() => {
     lastScoresShown = players ? players.map((p) => p.score) : [];
   }
 
+  function prefersReducedMotion() {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  }
+
   function tweenNumber(el, from, to, duration = 240) {
     if (from === to || !el) return;
+    if (prefersReducedMotion()) {
+      el.textContent = to;
+      return;
+    }
     const start = performance.now();
     function frame(now) {
       const t = Math.min(1, (now - start) / duration);
@@ -66,7 +79,69 @@ const DartsUI = (() => {
       </div>`;
   }
 
-  function renderSetup(root, settings, theme, handlers) {
+  function trainingSectionHtml(training) {
+    if (!Array.isArray(training) || training.length === 0) return '';
+    const rows = training
+      .map((e, i) => {
+        const d = new Date(e.date);
+        const dateLabel = isNaN(d.getTime())
+          ? '–'
+          : `${String(d.getDate()).padStart(2, '0')}.${String(
+              d.getMonth() + 1
+            ).padStart(2, '0')}.`;
+        const out = e.outMode === 'double' ? 'DO' : 'SO';
+        const avgNum =
+          typeof e.avg === 'number' && isFinite(e.avg) ? e.avg : null;
+        const avgLabel = avgNum === null ? '–' : avgNum.toFixed(2);
+        // Trend ggue. dem chronologisch vorherigen (aelteren) Solo-Spiel
+        // = naechst-hoeherer Index, da neuester Eintrag an Index 0 steht.
+        const prev = training[i + 1];
+        const prevNum =
+          prev && typeof prev.avg === 'number' && isFinite(prev.avg)
+            ? prev.avg
+            : null;
+        let trend = '';
+        if (avgNum !== null && prevNum !== null) {
+          if (avgNum > prevNum)
+            trend =
+              ' <span class="t-trend up" aria-label="besser als zuvor">▲</span>';
+          else if (avgNum < prevNum)
+            trend =
+              ' <span class="t-trend down" aria-label="schlechter als zuvor">▼</span>';
+        }
+        return `
+          <tr>
+            <td class="t-date">${dateLabel}</td>
+            <td class="t-start">${e.startScore != null ? e.startScore : '–'}</td>
+            <td class="t-out">${out}</td>
+            <td class="t-avg">${avgLabel}${trend}</td>
+            <td class="t-darts">${e.darts != null ? e.darts : '–'}</td>
+          </tr>`;
+      })
+      .join('');
+
+    return `
+      <div class="training">
+        <span class="legend-row">Trainingsverlauf</span>
+        <div class="training-table-wrap">
+          <table class="training-table">
+            <thead>
+              <tr>
+                <th class="t-date">Datum</th>
+                <th class="t-start">Start</th>
+                <th class="t-out">Out</th>
+                <th class="t-avg">Ø</th>
+                <th class="t-darts">Würfe</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <button type="button" class="training-reset" id="training-reset">Trainingsverlauf zurücksetzen</button>
+      </div>`;
+  }
+
+  function renderSetup(root, settings, theme, handlers, training = [], version = '') {
     armedMultiplier = 1;
     resetAnimationState(null);
 
@@ -159,6 +234,16 @@ const DartsUI = (() => {
             ${themeItem('dark', 'Dunkel')}
           </div>
         </div>
+
+        ${trainingSectionHtml(training)}
+
+        ${
+          version
+            ? `<p class="app-version">Schü's Darts Counter · ${escapeHtml(
+                version
+              )}</p>`
+            : ''
+        }
       </section>
     `;
 
@@ -300,6 +385,16 @@ const DartsUI = (() => {
       });
     });
 
+    // --- Trainingsverlauf zuruecksetzen ---
+    const trainingReset = root.querySelector('#training-reset');
+    if (trainingReset) {
+      trainingReset.addEventListener('click', () => {
+        if (confirm('Trainingsverlauf wirklich löschen?')) {
+          handlers.onResetTraining();
+        }
+      });
+    }
+
     // --- Spiel starten (robust gegen den ersten-Tap-Bug) ---
     let started = false;
     function doStart() {
@@ -409,6 +504,20 @@ const DartsUI = (() => {
       statusLine = `<span class="status">Wurf ${state.currentTurnDarts.length}/3 · ${turnTotal} Punkte</span>`;
     }
 
+    // Checkout-Vorschlag: nur Double-Out, nur aktive Spieler:in, dynamisch nach
+    // jedem Wurf. Verschwindet automatisch bei Bust/Sieg/keinem Finish.
+    let checkoutHint = '';
+    if (state.outMode === 'double' && !state.bust && !hasWinner) {
+      const dartsLeft = MAX_DARTS_PER_TURN - state.currentTurnDarts.length;
+      const route = checkoutRoute(state.players[curIdx].score, dartsLeft);
+      if (route) {
+        const path = route
+          .map((r) => `<span class="checkout-throw">${escapeHtml(r)}</span>`)
+          .join('<span class="checkout-sep" aria-hidden="true">›</span>');
+        checkoutHint = `<div class="checkout-hint"><span class="checkout-label">Finish:</span> ${path}</div>`;
+      }
+    }
+
     const multipliers = [1, 2, 3]
       .map((m) => {
         const label = m === 1 ? 'Single' : m === 2 ? 'Double' : 'Triple';
@@ -458,6 +567,7 @@ const DartsUI = (() => {
         <div class="turn">
           <div class="slots">${slots}</div>
           <div class="status-line">${statusLine}</div>
+          ${checkoutHint}
         </div>
 
         ${

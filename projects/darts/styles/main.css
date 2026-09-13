@@ -32,6 +32,12 @@
 
   --shadow-strong: rgba(15, 23, 42, 0.14);
 
+  /* DS-Uebernahmen (nur visuelle Sprache, Auftrag 3) */
+  --accent-strong: var(--accent-press);
+  --border-strong: #c2ccdb;
+  --elev-md: 0 2px 4px rgba(15, 23, 42, 0.07), 0 6px 16px rgba(15, 23, 42, 0.09);
+  --elev-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 3px 10px rgba(15, 23, 42, 0.05);
+
   --radius: 12px;
   --gap: 8px;
   --gap-lg: 14px;
@@ -65,6 +71,11 @@
     --danger: #f87171;
 
     --shadow-strong: rgba(0, 0, 0, 0.6);
+
+    --accent-strong: var(--accent-press);
+    --border-strong: #5a6b85;
+    --elev-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 20px rgba(0, 0, 0, 0.45);
+    --elev-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 3px 12px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -92,6 +103,11 @@
   --danger: #f87171;
 
   --shadow-strong: rgba(0, 0, 0, 0.6);
+
+  --accent-strong: var(--accent-press);
+  --border-strong: #5a6b85;
+  --elev-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 20px rgba(0, 0, 0, 0.45);
+  --elev-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 3px 12px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -198,7 +214,8 @@ legend {
 .seg {
   display: flex;
   gap: var(--gap);
-  background: var(--surface);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   padding: 4px;
   border-radius: var(--radius);
 }
@@ -210,10 +227,16 @@ legend {
   align-items: center;
   justify-content: center;
   min-height: var(--tap);
+  border: 1px solid transparent;
   border-radius: calc(var(--radius) - 4px);
   cursor: pointer;
   font-weight: 500;
   color: var(--muted);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.seg-item:hover {
+  color: var(--text);
 }
 
 .seg-item input {
@@ -223,8 +246,10 @@ legend {
 }
 
 .seg-item:has(input:checked) {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  color: var(--accent-strong);
+  border-color: var(--border-strong);
+  box-shadow: var(--elev-md);
 }
 
 /* ===== Name-Zeilen (Handle · Eingabe · Löschen) ===== */
@@ -388,6 +413,107 @@ legend {
   color: var(--text);
 }
 
+/* ===== Trainingsverlauf (Home, nur bei Eintraegen) ===== */
+.training {
+  margin-top: 2.5rem;
+}
+
+.training .legend-row {
+  display: block;
+  text-align: left;
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+.training-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-sm);
+}
+
+.training-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.training-table th,
+.training-table td {
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.training-table thead th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.training-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.training-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+/* Nebenspalten dezent */
+.training-table .t-date,
+.training-table .t-start,
+.training-table .t-out {
+  color: var(--muted);
+}
+
+/* Zahlenspalten rechtsbuendig, feste Ziffernbreite (Mono-Ziffern ok) */
+.training-table .t-avg,
+.training-table .t-darts {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.training-table td.t-avg {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.t-trend {
+  font-size: 0.75em;
+}
+
+.t-trend.up {
+  color: var(--success);
+}
+
+.t-trend.down {
+  color: var(--danger);
+}
+
+.training-reset {
+  margin-top: 0.6rem;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.training-reset:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* ===== Theme-Umschalter (ganz unten) ===== */
 .theme-switch {
   margin-top: 3rem;
@@ -404,7 +530,8 @@ legend {
 .theme-seg {
   display: flex;
   gap: 4px;
-  background: var(--surface);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   padding: 4px;
   border-radius: var(--radius);
 }
@@ -423,8 +550,10 @@ legend {
 }
 
 .theme-seg .seg-item:has(input:checked) {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--surface);
+  color: var(--accent-strong);
+  border-color: var(--border-strong);
+  box-shadow: var(--elev-md);
 }
 
 /* ===== Game screen ===== */
@@ -554,6 +683,7 @@ legend {
   font-size: clamp(1.6rem, 7vw, 2.4rem);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   line-height: 1.1;
 }
 
@@ -562,6 +692,7 @@ legend {
   font-size: 0.72rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
   letter-spacing: 0.02em;
 }
 
@@ -646,6 +777,8 @@ legend {
   font-size: 0.95rem;
   color: var(--muted);
   min-height: 1.4em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .status-bust {
@@ -659,6 +792,43 @@ legend {
   color: var(--success);
   font-weight: 700;
   font-size: 1.05rem;
+}
+
+/* Checkout-Vorschlag (nur Double-Out): hervorgehobene Akzent-Pille
+   unter der Statuszeile. */
+.checkout-hint {
+  align-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 8px;
+  margin: 2px auto 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.checkout-label {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-strong, var(--accent-press));
+}
+
+.checkout-throw {
+  font-weight: 800;
+  color: var(--accent-strong, var(--accent-press));
+  font-variant-numeric: tabular-nums;
+}
+
+.checkout-sep {
+  color: var(--accent-press);
+  opacity: 0.5;
 }
 
 /* Gemeinsame Box: Schalter (Single/Double/Triple) + Zahlen 1–20 gruppiert. */
@@ -857,5 +1027,46 @@ legend {
   .mult,
   .spec {
     min-height: 60px;
+  }
+}
+
+/* ===== Versionsangabe (Setup-Footer) ===== */
+.app-version {
+  margin-top: 1.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* ===== A11y: einheitlicher Fokus-Ring (nur Tastatur) ===== */
+.btn:focus-visible,
+.num:focus-visible,
+.mult:focus-visible,
+.spec:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.name-clear:focus-visible,
+.drag-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Kompakte Flaechen: Ring innen, damit er nicht ueberlaeuft */
+.seg-item:has(input:focus-visible),
+.slot.editable:focus-visible,
+.slot-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ===== A11y: Bewegung reduzieren ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
