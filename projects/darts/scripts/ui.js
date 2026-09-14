@@ -172,8 +172,8 @@ const DartsUI = (() => {
         <img src="./assets/icons/icon-192.png" alt="" class="setup-icon">
         <h1>Schü's Darts Counter</h1>
         <div id="setup-form">
-          <fieldset>
-            <legend>Spieler:innen</legend>
+          <div class="field">
+            <span class="field-label">Spieler:innen Anzahl</span>
             <div class="seg" role="radiogroup">
               ${[1, 2, 3, 4]
                 .map(
@@ -187,12 +187,15 @@ const DartsUI = (() => {
                 )
                 .join('')}
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset id="names-box" class="names"></fieldset>
+          <div class="field">
+            <span class="field-label">Spieler:innen Name</span>
+            <div id="names-box" class="names"></div>
+          </div>
 
-          <fieldset>
-            <legend>Startpunkte</legend>
+          <div class="field">
+            <span class="field-label">Startpunkte</span>
             <div class="field-select">
               <select name="startScore" aria-label="Startpunkte">
                 ${START_SCORE_OPTIONS.map(
@@ -203,10 +206,10 @@ const DartsUI = (() => {
                 ).join('')}
               </select>
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset>
-            <legend>Out-Modus</legend>
+          <div class="field">
+            <span class="field-label">Out-Modus</span>
             <div class="seg" role="radiogroup">
               <label class="seg-item">
                 <input type="radio" name="out" value="single" ${
@@ -221,7 +224,7 @@ const DartsUI = (() => {
                 <span>Double-Out</span>
               </label>
             </div>
-          </fieldset>
+          </div>
 
           <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
         </div>

@@ -198,17 +198,16 @@ button:not(:disabled):active {
   gap: 1.25rem;
 }
 
-fieldset {
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-legend {
+/* Gruppen-Label über den Setup-Feldern. Bewusst <div class="field"> + <span>
+   statt <fieldset>/<legend>: WebKit reserviert bei <fieldset> mit <legend>
+   ~25px Phantom-Höhe am unteren Rand, die erst der erste Tap per Reflow
+   auflöst → Layout-Sprung + verpuffter erster „Spiel starten"-Klick.
+   Mit div/span gibt es diesen Bug nicht. NICHT auf fieldset/legend zurückbauen. */
+.field-label {
+  display: block;
   font-size: 0.9rem;
   color: var(--muted);
   margin-bottom: 0.5rem;
-  padding: 0;
 }
 
 .seg {
@@ -272,9 +271,8 @@ legend {
     transform 0.02s linear, opacity 0.14s ease;
 }
 
-.name-row:focus-within {
-  border-color: var(--accent);
-}
+/* Namenszeile: bewusst KEINE Akzent-Hervorhebung beim Fokus (Wunsch Kevin) –
+   die weiße Karte kennzeichnet das aktive Feld ausreichend. */
 
 .name-row.dragging {
   border-color: var(--accent);
@@ -1049,6 +1047,11 @@ select:focus-visible,
 .drag-handle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Namensfeld ohne Fokus-Rahmen (Wunsch Kevin) – die Karte reicht als Kennung. */
+.name-row input:focus-visible {
+  outline: none;
 }
 
 /* Kompakte Flaechen: Ring innen, damit er nicht ueberlaeuft */

@@ -28,7 +28,7 @@
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v6';
+  const APP_VERSION = 'v9';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
