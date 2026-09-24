@@ -66,6 +66,14 @@ const DartsUI = (() => {
     dark:
       '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
       '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>',
+    soundOn:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/>' +
+      '<path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
+    soundOff:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" stroke="none"/>' +
+      '<path d="M22 9l-6 6M16 9l6 6"/></svg>',
   };
 
   function nameRowHtml(idx, value) {
@@ -167,6 +175,17 @@ const DartsUI = (() => {
         <span>${label}</span>
       </label>`;
 
+    // Ton beim Wurf-Einloggen (Default: an).
+    const soundOn = settings.sound !== false;
+    const soundItem = (val, label) => `
+      <label class="seg-item">
+        <input type="radio" name="sound" value="${val}" ${
+      (val === 'on') === soundOn ? 'checked' : ''
+    }>
+        ${val === 'on' ? ICON.soundOn : ICON.soundOff}
+        <span>${label}</span>
+      </label>`;
+
     root.innerHTML = `
       <section class="setup">
         <img src="./assets/icons/icon-192.png" alt="" class="setup-icon">
@@ -235,6 +254,14 @@ const DartsUI = (() => {
             ${themeItem('system', 'System')}
             ${themeItem('light', 'Hell')}
             ${themeItem('dark', 'Dunkel')}
+          </div>
+        </div>
+
+        <div class="theme-switch sound-switch">
+          <span class="legend-row">Ton beim Wurf</span>
+          <div class="theme-seg" role="radiogroup">
+            ${soundItem('on', 'An')}
+            ${soundItem('off', 'Aus')}
           </div>
         </div>
 
@@ -385,6 +412,15 @@ const DartsUI = (() => {
     root.querySelectorAll('input[name="theme"]').forEach((radio) => {
       radio.addEventListener('change', () => {
         if (radio.checked) handlers.onThemeChange(radio.value);
+      });
+    });
+
+    // --- Ton-Umschalter ---
+    root.querySelectorAll('input[name="sound"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (radio.checked && handlers.onSoundChange) {
+          handlers.onSoundChange(radio.value === 'on');
+        }
       });
     });
 

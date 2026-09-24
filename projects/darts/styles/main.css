@@ -554,6 +554,23 @@ button:not(:disabled):active {
   box-shadow: var(--elev-md);
 }
 
+/* Ton-Schalter: sitzt direkt unter dem Theme-Schalter, engerer Abstand. */
+.sound-switch {
+  margin-top: 1.25rem;
+}
+
+/* Verstecktes iOS-Haptik-Element (siehe app.js). Off-screen, aber gerendert –
+   nicht display:none, sonst löst das Umschalten keine Haptik aus. */
+.ios-haptic {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ===== Game screen ===== */
 .game {
   display: flex;
@@ -753,20 +770,26 @@ button:not(:disabled):active {
 }
 
 .slot.just-filled {
-  animation: slot-pop 160ms ease-out;
+  animation: slot-pop 210ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes slot-pop {
   0% {
-    transform: scale(0.6);
+    transform: scale(0.55);
     opacity: 0;
+    background: color-mix(in srgb, var(--accent) 42%, var(--surface));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
   }
-  60% {
-    transform: scale(1.08);
+  55% {
+    transform: scale(1.16);
     opacity: 1;
+    background: color-mix(in srgb, var(--accent) 34%, var(--surface));
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 20%, transparent);
   }
   100% {
     transform: scale(1);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
   }
 }
 

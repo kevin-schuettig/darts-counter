@@ -28,7 +28,7 @@
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v9';
+  const APP_VERSION = 'v10';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -36,10 +36,99 @@
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   } catch {}
 
+  // Ton beim Wurf-Einloggen an/aus (Default: an). Wird modulweit gehalten,
+  // damit die Spiel-Handler ihn kennen, und in den Settings persistiert.
+  let soundEnabled = loadSettings().sound !== false;
+
   function haptic(pattern) {
+    // Android/Chrome kennt navigator.vibrate() → echte Vibration.
     try {
-      if (navigator.vibrate) navigator.vibrate(pattern);
+      if (navigator.vibrate) {
+        navigator.vibrate(pattern);
+        return;
+      }
     } catch {}
+    // iOS/Safari kennt vibrate() NICHT. Best-Effort-Fallback über ein
+    // verstecktes <input switch> (iOS 17.4+), das innerhalb einer echten
+    // Nutzergeste umgeschaltet wird. Ohne Garantie – je nach iOS-Version
+    // passiert schlicht nichts.
+    try {
+      const h = ensureIosHapticSwitch();
+      if (h) h.click();
+    } catch {}
+  }
+
+  let iosHapticSwitch = null;
+  function ensureIosHapticSwitch() {
+    if (iosHapticSwitch !== null) return iosHapticSwitch || null;
+    try {
+      const label = document.createElement('label');
+      label.className = 'ios-haptic';
+      label.setAttribute('aria-hidden', 'true');
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.setAttribute('switch', '');
+      input.tabIndex = -1;
+      label.appendChild(input);
+      document.body.appendChild(label);
+      iosHapticSwitch = label;
+    } catch {
+      iosHapticSwitch = false;
+    }
+    return iosHapticSwitch || null;
+  }
+
+  // --- Ton-Feedback (Web Audio) --------------------------------------------
+  // Kurzer, trockener „Tock" beim Einloggen eines Wurfs – komplett im Code
+  // erzeugt (keine Audiodatei → kein Ladeverzug). Der AudioContext startet
+  // auf iOS erst nach einer echten Nutzergeste; da playSound() synchron im
+  // Tap-Handler läuft, entsperrt ihn der erste Wurf von selbst.
+  let audioCtx = null;
+  function getAudioCtx() {
+    if (audioCtx) return audioCtx;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) audioCtx = new Ctx();
+    } catch {
+      audioCtx = null;
+    }
+    return audioCtx;
+  }
+
+  // kind: 'click' (normaler Wurf) | 'bust' | 'win'
+  function playSound(kind) {
+    if (!soundEnabled) return;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+      if (ctx.state === 'suspended') ctx.resume();
+    } catch {}
+    const t0 = ctx.currentTime;
+
+    const blip = (freqStart, freqEnd, startAt, dur, peak) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freqStart, startAt);
+      if (freqEnd && freqEnd !== freqStart) {
+        osc.frequency.exponentialRampToValueAtTime(freqEnd, startAt + dur);
+      }
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(peak, startAt + 0.004);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(startAt);
+      osc.stop(startAt + dur + 0.03);
+    };
+
+    if (kind === 'win') {
+      blip(660, 660, t0, 0.1, 0.16);
+      blip(990, 990, t0 + 0.11, 0.16, 0.16);
+    } else if (kind === 'bust') {
+      blip(200, 120, t0, 0.16, 0.18);
+    } else {
+      blip(420, 300, t0, 0.045, 0.12); // dezenter Klick/Tock
+    }
   }
 
   // Animierter Scroll nach oben – eigene rAF-Animation statt behavior:'smooth'
@@ -108,6 +197,7 @@
       {
         onStart: ({ names, outMode, startScore }) => {
           saveSettings({
+            ...loadSettings(), // u.a. sound-Flag erhalten
             outMode,
             startScore,
             lastCount: names.length,
@@ -123,6 +213,15 @@
         onThemeChange: (mode) => {
           saveTheme(mode);
           applyTheme(mode);
+        },
+        onSoundChange: (on) => {
+          soundEnabled = on;
+          const s = loadSettings();
+          s.sound = on;
+          saveSettings(s);
+          // Beim Einschalten kurz vorhören – entsperrt zugleich den Audio-
+          // Kontext, weil wir noch in der Nutzergeste des Taps sind.
+          if (on) playSound('click');
         },
         onResetTraining: () => {
           clearTraining();
@@ -160,9 +259,16 @@
           state.trainingRecorded = true;
         }
         persist();
-        if (state.winnerIdx !== null) haptic([100, 50, 100, 50, 200]);
-        else if (state.bust) haptic([60, 40, 60]);
-        else haptic(12);
+        if (state.winnerIdx !== null) {
+          haptic([100, 50, 100, 50, 200]);
+          playSound('win');
+        } else if (state.bust) {
+          haptic([60, 40, 60]);
+          playSound('bust');
+        } else {
+          haptic(12);
+          playSound('click');
+        }
         showGame();
         scrollTopSmooth();
       },
