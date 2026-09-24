@@ -28,7 +28,7 @@
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v10';
+  const APP_VERSION = 'v11';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -105,10 +105,10 @@
     } catch {}
     const t0 = ctx.currentTime;
 
-    const blip = (freqStart, freqEnd, startAt, dur, peak) => {
+    const blip = (freqStart, freqEnd, startAt, dur, peak, type) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'triangle';
+      osc.type = type || 'triangle';
       osc.frequency.setValueAtTime(freqStart, startAt);
       if (freqEnd && freqEnd !== freqStart) {
         osc.frequency.exponentialRampToValueAtTime(freqEnd, startAt + dur);
@@ -126,6 +126,10 @@
       blip(990, 990, t0 + 0.11, 0.16, 0.16);
     } else if (kind === 'bust') {
       blip(200, 120, t0, 0.16, 0.18);
+    } else if (kind === 'miss') {
+      // „Ärgerlicher" Downer: kurzes absteigendes Wah-Wah, rauer Sägezahn.
+      blip(300, 220, t0, 0.13, 0.13, 'sawtooth');
+      blip(220, 160, t0 + 0.12, 0.2, 0.13, 'sawtooth');
     } else {
       blip(420, 300, t0, 0.045, 0.12); // dezenter Klick/Tock
     }
@@ -267,7 +271,8 @@
           playSound('bust');
         } else {
           haptic(12);
-          playSound('click');
+          // „Miss" (0 Punkte) bekommt einen eigenen, ärgerlicheren Sound.
+          playSound(dart && dart.value === 0 ? 'miss' : 'click');
         }
         showGame();
         scrollTopSmooth();
