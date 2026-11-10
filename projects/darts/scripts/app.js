@@ -37,7 +37,7 @@
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v13';
+  const APP_VERSION = 'v14';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -94,17 +94,25 @@
   // - Der AudioContext läuft erst nach einer echten Nutzergeste. Wir
   //   entsperren ihn bei JEDEM Tap (unlockAudio), nicht nur beim ersten –
   //   nach App-Wechsel/Sperrbildschirm steht er sonst auf „suspended" bzw.
-  //   „interrupted" und bleibt stumm.
-  // - Stumm-Schalter: iOS spielt Web Audio standardmäßig als „Umgebungston",
-  //   der vom Stumm-Schalter stummgeschaltet wird. Ist der Ton in der App
-  //   bewusst AN, markieren wir die Seite als „Wiedergabe":
-  //   • neue iOS-Versionen: navigator.audioSession.type = 'playback'
-  //   • ältere: eine stumme, endlos laufende <audio>-Spur (Medienwiedergabe
-  //     schaltet die Audio-Session der Seite auf „Wiedergabe" um).
-  //   Nebenwirkung: Musik aus anderen Apps kann dabei pausieren.
-  // - Lautstärke: deutlich höhere Pegel + Kompressor als Begrenzer.
+  //   „interrupted" und bleibt stumm. Lässt er sich nicht wecken (z. B.
+  //   nachdem eine andere App die Audio-Ausgabe belegt hatte), wird er
+  //   verworfen und neu angelegt.
+  // - Audio-Session „ambient": Die Töne mischen sich mit Musik aus anderen
+  //   Apps (Spotify & Co. laufen weiter). Bewusste Entscheidung (v14): Der
+  //   iOS-Stumm-Schalter macht die Töne dann leise. „playback" (ignoriert
+  //   den Stumm-Schalter) blockiert sich mit fremder Musik – getestet in v13.
+  // - Lautstärke: hohe Pegel + Kompressor als Begrenzer.
   let audioCtx = null;
   let masterIn = null;
+
+  function recreateAudioCtx() {
+    try {
+      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+    } catch {}
+    audioCtx = null;
+    masterIn = null;
+    getAudioCtx();
+  }
 
   function getAudioCtx() {
     if (audioCtx && audioCtx.state !== 'closed') return audioCtx;
@@ -130,90 +138,32 @@
     return audioCtx;
   }
 
-  // Stumme Endlos-Spur (Fallback für iOS ohne navigator.audioSession).
-  let silentAudio = null;
-  function makeSilentWavUrl() {
-    // 0,5 s Stille, 8 kHz, 8 Bit mono – winzige WAV im Speicher erzeugt.
-    const sampleRate = 8000;
-    const samples = 4000;
-    const buf = new ArrayBuffer(44 + samples);
-    const v = new DataView(buf);
-    const str = (o, s) => {
-      for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
-    };
-    str(0, 'RIFF');
-    v.setUint32(4, 36 + samples, true);
-    str(8, 'WAVE');
-    str(12, 'fmt ');
-    v.setUint32(16, 16, true);
-    v.setUint16(20, 1, true); // PCM
-    v.setUint16(22, 1, true); // mono
-    v.setUint32(24, sampleRate, true);
-    v.setUint32(28, sampleRate, true);
-    v.setUint16(32, 1, true);
-    v.setUint16(34, 8, true);
-    str(36, 'data');
-    v.setUint32(40, samples, true);
-    for (let i = 0; i < samples; i++) v.setUint8(44 + i, 128); // 8-Bit-Stille
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  }
-
-  function hasAudioSessionApi() {
-    return !!(navigator.audioSession && 'type' in navigator.audioSession);
-  }
-
-  // Nur iPhone/iPad haben den Stumm-Schalter-Effekt (iPadOS meldet sich
-  // als „Macintosh" mit Touch). Auf Desktop/Android keine stumme Spur.
-  function isIOS() {
-    const ua = navigator.userAgent || '';
-    return (
-      /iPhone|iPad|iPod/.test(ua) ||
-      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
-    );
-  }
-
+  // Neuere iOS-Versionen kennen navigator.audioSession: „ambient" = mischt
+  // sich mit fremder Musik. Ohne API ist das ohnehin das Web-Audio-Verhalten.
   function applyAudioSession() {
-    if (hasAudioSessionApi()) {
-      try {
-        navigator.audioSession.type = soundEnabled ? 'playback' : 'auto';
-      } catch {}
-      return;
-    }
-    // Fallback (nur iOS): stumme Spur nur, solange der Ton bewusst an ist
-    // und die Seite sichtbar ist.
-    if (!isIOS()) return;
-    if (soundEnabled && document.visibilityState === 'visible') {
-      try {
-        if (!silentAudio) {
-          silentAudio = document.createElement('audio');
-          silentAudio.src = makeSilentWavUrl();
-          silentAudio.loop = true;
-          silentAudio.preload = 'auto';
-          silentAudio.setAttribute('playsinline', '');
-          silentAudio.setAttribute('x-webkit-airplay', 'deny');
-        }
-        if (silentAudio.paused) {
-          const p = silentAudio.play();
-          if (p && p.catch) p.catch(() => {});
-        }
-      } catch {}
-    } else if (silentAudio && !silentAudio.paused) {
-      try {
-        silentAudio.pause();
-      } catch {}
-    }
+    if (!(navigator.audioSession && 'type' in navigator.audioSession)) return;
+    try {
+      navigator.audioSession.type = 'ambient';
+    } catch {}
   }
 
-  // Bei jeder Nutzergeste: Kontext wecken + Audio-Session setzen.
+  // Bei jeder Nutzergeste: Kontext wecken. Klappt das nicht (bleibt
+  // „interrupted"/„suspended" oder resume schlägt fehl), Kontext neu
+  // anlegen – der nächste Tap startet ihn dann sauber.
   function unlockAudio() {
     if (!soundEnabled) return;
     applyAudioSession();
     const ctx = getAudioCtx();
-    if (ctx && ctx.state !== 'running') {
-      try {
-        const p = ctx.resume();
-        if (p && p.catch) p.catch(() => {});
-      } catch {}
+    if (!ctx || ctx.state === 'running') return;
+    try {
+      const p = ctx.resume();
+      if (p && p.then) {
+        p.then(() => {
+          if (ctx.state !== 'running') recreateAudioCtx();
+        }).catch(recreateAudioCtx);
+      }
+    } catch {
+      recreateAudioCtx();
     }
   }
 
@@ -222,13 +172,7 @@
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      unlockAudio();
-    } else if (silentAudio && !silentAudio.paused) {
-      try {
-        silentAudio.pause();
-      } catch {}
-    }
+    if (document.visibilityState === 'visible') unlockAudio();
   });
 
   // kind: 'click' (Wurf) | 'miss' | 'bust' | 'win'
@@ -399,10 +343,8 @@
           const s = loadSettings();
           s.sound = on;
           saveSettings(s);
-          // Audio-Session sofort anpassen (aus → Stumm-Schalter wieder
-          // respektieren / stumme Spur stoppen). Beim Einschalten kurz
-          // vorhören – entsperrt zugleich den Kontext (noch in der Geste).
-          applyAudioSession();
+          // Beim Einschalten kurz vorhören – entsperrt zugleich den
+          // Kontext (wir sind noch in der Nutzergeste).
           if (on) {
             unlockAudio();
             playSound('click');

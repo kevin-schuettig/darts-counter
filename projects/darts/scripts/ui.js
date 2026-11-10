@@ -432,7 +432,7 @@ const DartsUI = (() => {
         <div id="setup-form">
           <div class="field">
             <span class="field-label">Spieler:innen Anzahl</span>
-            <div class="seg" role="radiogroup">
+            <div class="seg seg-neutral" role="radiogroup">
               ${[1, 2, 3, 4]
                 .map(
                   (n) => `
@@ -571,13 +571,12 @@ const DartsUI = (() => {
               </div>
             </div>
           </div>
+
+          <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
           </div>
           </div>
 
-          <div class="setup-actions">
-            <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
-            <button type="button" id="settings-btn" class="btn btn-secondary btn-settings">Einstellungen</button>
-          </div>
+          <button type="button" id="settings-btn" class="btn btn-secondary btn-settings">Einstellungen</button>
         </div>
 
         ${trainingSectionHtml(training)}
@@ -958,7 +957,7 @@ const DartsUI = (() => {
     const slideIn = turnOver && !lastTurnOver;
 
     const primaryBtn = hasWinner
-      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Neues Spiel</button>`
+      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Spiel beenden</button>`
       : `<button type="button" class="btn btn-primary btn-weiter" id="btn-end">Weiter</button>`;
 
     const quitBtn = hasWinner
@@ -1250,7 +1249,7 @@ const DartsUI = (() => {
     const slideIn = turnOver && !lastTurnOver;
 
     const primaryBtn = hasWinner
-      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Neues Spiel</button>`
+      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Spiel beenden</button>`
       : `<button type="button" class="btn btn-primary btn-weiter" id="btn-end">Weiter</button>`;
 
     const quitBtn = hasWinner

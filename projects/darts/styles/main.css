@@ -30,6 +30,10 @@
   --success: #12a150;
   --danger: #dc2626;
 
+  /* Around-the-Clock-Modusfarbe (Grün wie Triple): Text- und Druck-Variante */
+  --clock-strong: #0b7d3e;
+  --clock-press: #0e8a44;
+
   --shadow-strong: rgba(15, 23, 42, 0.14);
 
   /* DS-Uebernahmen (nur visuelle Sprache, Auftrag 3) */
@@ -70,6 +74,9 @@
     --success: #34d399;
     --danger: #f87171;
 
+    --clock-strong: #34d399;
+    --clock-press: #2bb986;
+
     --shadow-strong: rgba(0, 0, 0, 0.6);
 
     --accent-strong: var(--accent-press);
@@ -101,6 +108,9 @@
 
   --success: #34d399;
   --danger: #f87171;
+
+  --clock-strong: #34d399;
+  --clock-press: #2bb986;
 
   --shadow-strong: rgba(0, 0, 0, 0.6);
 
@@ -168,9 +178,10 @@ button:not(:disabled):active {
 }
 
 /* ===== Setup screen ===== */
+/* Seitenränder + max. Breite wie im Spiel-Screen (.game). */
 .setup {
-  padding: 1.5rem 1.25rem 2rem;
-  max-width: 32rem;
+  padding: 1.5rem var(--gap) 2rem;
+  max-width: 28rem;
   margin: 0 auto;
   width: 100%;
 }
@@ -273,20 +284,28 @@ button:not(:disabled):active {
   background: var(--surface-2);
 }
 
-/* Start + Einstellungen untereinander, enger als die Feld-Abstände. */
-.setup-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
+/* Modusfarbe: Im Around-the-Clock-Modus wird der Akzent IN der Box grün –
+   ausgewählte Optionen, „Spiel starten", Fokus-Ring. X01 bleibt blau.
+   (--mult-single ist am :root bereits aufgelöst, das X01-Tab bleibt blau.) */
+.mode-panel:has(input[name='mode'][value='clock']:checked) {
+  --accent: var(--mult-triple);
+  --accent-press: var(--clock-press);
+  --accent-strong: var(--clock-strong);
+  --on-accent: var(--on-triple);
 }
 
-/* „Einstellungen": gleicher Stil wie „Spiel beenden". Doppelte Klasse,
-   damit die Akzentfarbe gegen .btn-secondary (steht weiter unten) gewinnt. */
+/* „Einstellungen": Form wie „Spiel beenden", Schrift neutral. */
 .btn-secondary.btn-settings {
   width: 100%;
   min-height: var(--tap);
-  color: var(--accent);
+  color: var(--text);
   font-weight: 600;
+}
+
+/* Segmented Controls außerhalb der Modus-Box (Spieler:innen-Anzahl):
+   Auswahl in neutraler Schrift, da nicht modusabhängig. */
+.seg-neutral .seg-item:has(input:checked) {
+  color: var(--text);
 }
 
 /* Gruppen-Label über den Setup-Feldern. Bewusst <div class="field"> + <span>
@@ -1163,6 +1182,10 @@ button:not(:disabled):active {
 
 /* ===== Tablet / Desktop ===== */
 @media (min-width: 720px) {
+  .setup {
+    padding-left: var(--gap-lg);
+    padding-right: var(--gap-lg);
+  }
   .game {
     max-width: 28rem;
     margin: 0 auto;
