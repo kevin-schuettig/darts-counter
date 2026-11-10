@@ -198,15 +198,95 @@ button:not(:disabled):active {
   gap: 1.25rem;
 }
 
+/* Modus-Rahmen: Moduswahl als „Kopf" über den modusabhängigen
+   Spiel-Einstellungen – gleiches Prinzip wie S/D/T über den Zahlen im
+   Spiel-Screen (.input-group + .tab-strip). */
+.mode-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+}
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: var(--surface-2);
+  padding: 4px;
+  border-radius: calc(var(--radius) - 4px);
+}
+
+.mode-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: var(--tap);
+  padding: 0 8px;
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mode-tab input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mode-tab:hover {
+  color: var(--text);
+}
+
+/* Unterschiedliche Modusfarben wie Single (blau) / Triple (grün). */
+.mode-tab[data-mode='x01']:has(input:checked) {
+  background: var(--mult-single);
+  color: var(--on-single);
+}
+
+.mode-tab[data-mode='clock']:has(input:checked) {
+  background: var(--mult-triple);
+  color: var(--on-triple);
+}
+
 /* Modusabhängige Feld-Gruppen (X01 vs. Around the Clock). */
 .mode-fields {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  padding: 0 6px 8px;
 }
 
 .mode-fields[hidden] {
   display: none;
+}
+
+/* Im weißen Rahmen brauchen Dropdowns die Zweitfläche, sonst verschwimmen sie. */
+.mode-panel .field-select {
+  background: var(--surface-2);
+}
+
+/* Start + Einstellungen untereinander, enger als die Feld-Abstände. */
+.setup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* „Einstellungen": gleicher Stil wie „Spiel beenden". Doppelte Klasse,
+   damit die Akzentfarbe gegen .btn-secondary (steht weiter unten) gewinnt. */
+.btn-secondary.btn-settings {
+  width: 100%;
+  min-height: var(--tap);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* Gruppen-Label über den Setup-Feldern. Bewusst <div class="field"> + <span>
@@ -541,12 +621,16 @@ button:not(:disabled):active {
   border-color: var(--danger);
 }
 
-/* ===== Theme-Umschalter (ganz unten) ===== */
-.theme-switch {
-  margin-top: 3rem;
+/* ===== Darstellung/Ton (im Einstellungen-Modal) ===== */
+.settings-card .dialog-title {
+  margin-bottom: 1rem;
 }
 
-.theme-switch .legend-row {
+.settings-group {
+  margin-bottom: 1.25rem;
+}
+
+.settings-group .legend-row {
   display: block;
   text-align: left;
   font-size: 0.9rem;
@@ -581,11 +665,6 @@ button:not(:disabled):active {
   color: var(--accent-strong);
   border-color: var(--border-strong);
   box-shadow: var(--elev-md);
-}
-
-/* Ton-Schalter: sitzt direkt unter dem Theme-Schalter, engerer Abstand. */
-.sound-switch {
-  margin-top: 1.25rem;
 }
 
 /* Verstecktes iOS-Haptik-Element (siehe app.js). Off-screen, aber gerendert –
@@ -814,6 +893,17 @@ button:not(:disabled):active {
 
 .slot.just-filled {
   animation: slot-pop 210ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Around the Clock: Fehlwurf wirkt wie „Bust" in X01 – rot + Schütteln. */
+.slot.slot-miss {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+}
+
+.slot.slot-miss.miss-flash {
+  animation: bust-shake 320ms ease;
 }
 
 @keyframes slot-pop {
@@ -1122,6 +1212,7 @@ select:focus-visible,
 
 /* Kompakte Flaechen: Ring innen, damit er nicht ueberlaeuft */
 .seg-item:has(input:focus-visible),
+.mode-tab:has(input:focus-visible),
 .slot.editable:focus-visible,
 .slot-input:focus-visible {
   outline: 2px solid var(--accent);

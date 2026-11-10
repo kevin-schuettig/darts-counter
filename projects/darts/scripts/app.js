@@ -37,7 +37,7 @@
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v12';
+  const APP_VERSION = 'v13';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -88,59 +88,202 @@
   }
 
   // --- Ton-Feedback (Web Audio) --------------------------------------------
-  // Kurzer, trockener „Tock" beim Einloggen eines Wurfs – komplett im Code
-  // erzeugt (keine Audiodatei → kein Ladeverzug). Der AudioContext startet
-  // auf iOS erst nach einer echten Nutzergeste; da playSound() synchron im
-  // Tap-Handler läuft, entsperrt ihn der erste Wurf von selbst.
+  // Töne werden komplett im Code erzeugt (keine Audiodatei → kein Ladeverzug).
+  //
+  // Zuverlässigkeit auf iOS:
+  // - Der AudioContext läuft erst nach einer echten Nutzergeste. Wir
+  //   entsperren ihn bei JEDEM Tap (unlockAudio), nicht nur beim ersten –
+  //   nach App-Wechsel/Sperrbildschirm steht er sonst auf „suspended" bzw.
+  //   „interrupted" und bleibt stumm.
+  // - Stumm-Schalter: iOS spielt Web Audio standardmäßig als „Umgebungston",
+  //   der vom Stumm-Schalter stummgeschaltet wird. Ist der Ton in der App
+  //   bewusst AN, markieren wir die Seite als „Wiedergabe":
+  //   • neue iOS-Versionen: navigator.audioSession.type = 'playback'
+  //   • ältere: eine stumme, endlos laufende <audio>-Spur (Medienwiedergabe
+  //     schaltet die Audio-Session der Seite auf „Wiedergabe" um).
+  //   Nebenwirkung: Musik aus anderen Apps kann dabei pausieren.
+  // - Lautstärke: deutlich höhere Pegel + Kompressor als Begrenzer.
   let audioCtx = null;
+  let masterIn = null;
+
   function getAudioCtx() {
-    if (audioCtx) return audioCtx;
+    if (audioCtx && audioCtx.state !== 'closed') return audioCtx;
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (Ctx) audioCtx = new Ctx();
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+      // Signalkette: Töne → Master-Gain → Kompressor (Begrenzer) → Ausgang.
+      const master = audioCtx.createGain();
+      master.gain.value = 1.0;
+      const limiter = audioCtx.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.12;
+      master.connect(limiter).connect(audioCtx.destination);
+      masterIn = master;
     } catch {
       audioCtx = null;
+      masterIn = null;
     }
     return audioCtx;
   }
 
-  // kind: 'click' (normaler Wurf) | 'bust' | 'win'
+  // Stumme Endlos-Spur (Fallback für iOS ohne navigator.audioSession).
+  let silentAudio = null;
+  function makeSilentWavUrl() {
+    // 0,5 s Stille, 8 kHz, 8 Bit mono – winzige WAV im Speicher erzeugt.
+    const sampleRate = 8000;
+    const samples = 4000;
+    const buf = new ArrayBuffer(44 + samples);
+    const v = new DataView(buf);
+    const str = (o, s) => {
+      for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+    };
+    str(0, 'RIFF');
+    v.setUint32(4, 36 + samples, true);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); // PCM
+    v.setUint16(22, 1, true); // mono
+    v.setUint32(24, sampleRate, true);
+    v.setUint32(28, sampleRate, true);
+    v.setUint16(32, 1, true);
+    v.setUint16(34, 8, true);
+    str(36, 'data');
+    v.setUint32(40, samples, true);
+    for (let i = 0; i < samples; i++) v.setUint8(44 + i, 128); // 8-Bit-Stille
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+
+  function hasAudioSessionApi() {
+    return !!(navigator.audioSession && 'type' in navigator.audioSession);
+  }
+
+  // Nur iPhone/iPad haben den Stumm-Schalter-Effekt (iPadOS meldet sich
+  // als „Macintosh" mit Touch). Auf Desktop/Android keine stumme Spur.
+  function isIOS() {
+    const ua = navigator.userAgent || '';
+    return (
+      /iPhone|iPad|iPod/.test(ua) ||
+      (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+    );
+  }
+
+  function applyAudioSession() {
+    if (hasAudioSessionApi()) {
+      try {
+        navigator.audioSession.type = soundEnabled ? 'playback' : 'auto';
+      } catch {}
+      return;
+    }
+    // Fallback (nur iOS): stumme Spur nur, solange der Ton bewusst an ist
+    // und die Seite sichtbar ist.
+    if (!isIOS()) return;
+    if (soundEnabled && document.visibilityState === 'visible') {
+      try {
+        if (!silentAudio) {
+          silentAudio = document.createElement('audio');
+          silentAudio.src = makeSilentWavUrl();
+          silentAudio.loop = true;
+          silentAudio.preload = 'auto';
+          silentAudio.setAttribute('playsinline', '');
+          silentAudio.setAttribute('x-webkit-airplay', 'deny');
+        }
+        if (silentAudio.paused) {
+          const p = silentAudio.play();
+          if (p && p.catch) p.catch(() => {});
+        }
+      } catch {}
+    } else if (silentAudio && !silentAudio.paused) {
+      try {
+        silentAudio.pause();
+      } catch {}
+    }
+  }
+
+  // Bei jeder Nutzergeste: Kontext wecken + Audio-Session setzen.
+  function unlockAudio() {
+    if (!soundEnabled) return;
+    applyAudioSession();
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state !== 'running') {
+      try {
+        const p = ctx.resume();
+        if (p && p.catch) p.catch(() => {});
+      } catch {}
+    }
+  }
+
+  ['pointerdown', 'touchend', 'keydown'].forEach((type) => {
+    document.addEventListener(type, unlockAudio, { capture: true, passive: true });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      unlockAudio();
+    } else if (silentAudio && !silentAudio.paused) {
+      try {
+        silentAudio.pause();
+      } catch {}
+    }
+  });
+
+  // kind: 'click' (Wurf) | 'miss' | 'bust' | 'win'
   function playSound(kind) {
     if (!soundEnabled) return;
     const ctx = getAudioCtx();
-    if (!ctx) return;
-    try {
-      if (ctx.state === 'suspended') ctx.resume();
-    } catch {}
-    const t0 = ctx.currentTime;
+    if (!ctx || !masterIn) return;
+    if (ctx.state !== 'running') {
+      try {
+        ctx.resume();
+      } catch {}
+    }
+    // Kleiner Vorlauf, damit der erste Ton nach dem Aufwecken nicht
+    // abgeschnitten wird.
+    const t0 = ctx.currentTime + 0.01;
 
-    const blip = (freqStart, freqEnd, startAt, dur, peak, type) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type || 'triangle';
-      osc.frequency.setValueAtTime(freqStart, startAt);
-      if (freqEnd && freqEnd !== freqStart) {
-        osc.frequency.exponentialRampToValueAtTime(freqEnd, startAt + dur);
-      }
-      gain.gain.setValueAtTime(0.0001, startAt);
-      gain.gain.exponentialRampToValueAtTime(peak, startAt + 0.004);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(startAt);
-      osc.stop(startAt + dur + 0.03);
+    // Ton aus Grundwelle + leiser Oktave (mehr „Körper" auf Handy-Lautsprechern).
+    const tone = (freqStart, freqEnd, startAt, dur, peak, type) => {
+      [
+        [1, 1],
+        [2, 0.35],
+      ].forEach(([mult, level]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type || 'triangle';
+        osc.frequency.setValueAtTime(freqStart * mult, startAt);
+        if (freqEnd && freqEnd !== freqStart) {
+          osc.frequency.exponentialRampToValueAtTime(
+            freqEnd * mult,
+            startAt + dur
+          );
+        }
+        const p = Math.max(0.0002, peak * level);
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(p, startAt + 0.005);
+        gain.gain.setValueAtTime(p, startAt + dur * 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + dur);
+        osc.connect(gain).connect(masterIn);
+        osc.start(startAt);
+        osc.stop(startAt + dur + 0.03);
+      });
     };
 
     if (kind === 'win') {
-      blip(660, 660, t0, 0.1, 0.16);
-      blip(990, 990, t0 + 0.11, 0.16, 0.16);
+      tone(660, 660, t0, 0.14, 0.9);
+      tone(880, 880, t0 + 0.13, 0.14, 0.9);
+      tone(1320, 1320, t0 + 0.26, 0.28, 0.9);
     } else if (kind === 'bust') {
-      blip(200, 120, t0, 0.16, 0.18);
+      tone(220, 110, t0, 0.3, 1.0, 'sawtooth');
     } else if (kind === 'miss') {
-      // „Ärgerlicher" Downer: kurzes absteigendes Wah-Wah, rauer Sägezahn.
-      blip(300, 220, t0, 0.13, 0.13, 'sawtooth');
-      blip(220, 160, t0 + 0.12, 0.2, 0.13, 'sawtooth');
+      // „Ärgerlicher" Downer: absteigendes Wah-Wah, rauer Sägezahn.
+      tone(320, 230, t0, 0.15, 0.8, 'sawtooth');
+      tone(230, 150, t0 + 0.14, 0.26, 0.8, 'sawtooth');
     } else {
-      blip(420, 300, t0, 0.045, 0.12); // dezenter Klick/Tock
+      tone(520, 340, t0, 0.09, 0.9); // kräftiger Klick/Tock
     }
   }
 
@@ -256,9 +399,14 @@
           const s = loadSettings();
           s.sound = on;
           saveSettings(s);
-          // Beim Einschalten kurz vorhören – entsperrt zugleich den Audio-
-          // Kontext, weil wir noch in der Nutzergeste des Taps sind.
-          if (on) playSound('click');
+          // Audio-Session sofort anpassen (aus → Stumm-Schalter wieder
+          // respektieren / stumme Spur stoppen). Beim Einschalten kurz
+          // vorhören – entsperrt zugleich den Kontext (noch in der Geste).
+          applyAudioSession();
+          if (on) {
+            unlockAudio();
+            playSound('click');
+          }
         },
         onResetTraining: () => {
           clearTraining();

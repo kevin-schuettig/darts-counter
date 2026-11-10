@@ -31,42 +31,19 @@ const DartsUI = (() => {
     }
   }
 
-  // Eigener Bestätigungsdialog im App-Design (ersetzt window.confirm). Der
-  // Hintergrund wird weichgezeichnet. Liefert ein Promise<boolean>.
-  function confirmDialog({
-    title = '',
-    message = '',
-    confirmLabel = 'OK',
-    cancelLabel = 'Abbrechen',
-    danger = false,
-  } = {}) {
+  // Gemeinsames Modal-Gerüst: Overlay mit weichgezeichnetem Hintergrund,
+  // Escape/Backdrop schließen, Fokus-Trap, Body-Scroll-Sperre.
+  // wire(overlay, close) verdrahtet den Inhalt und liefert das Element, das
+  // initial den Fokus bekommt. dismissValue = Ergebnis bei Escape/Backdrop.
+  function openOverlay(cardHtml, wire, dismissValue) {
     return new Promise((resolve) => {
       const prevFocus = document.activeElement;
       const overlay = document.createElement('div');
       overlay.className = 'dialog-overlay';
-      overlay.innerHTML = `
-        <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-          <h2 class="dialog-title" id="dialog-title">${escapeHtml(title)}</h2>
-          ${
-            message
-              ? `<p class="dialog-message">${escapeHtml(message)}</p>`
-              : ''
-          }
-          <div class="dialog-actions">
-            <button type="button" class="btn btn-secondary dialog-cancel">${escapeHtml(
-              cancelLabel
-            )}</button>
-            <button type="button" class="btn ${
-              danger ? 'btn-danger' : 'btn-primary'
-            } dialog-confirm">${escapeHtml(confirmLabel)}</button>
-          </div>
-        </div>`;
+      overlay.innerHTML = cardHtml;
       document.body.appendChild(overlay);
       document.body.classList.add('dialog-open');
       requestAnimationFrame(() => overlay.classList.add('show'));
-
-      const cancelBtn = overlay.querySelector('.dialog-cancel');
-      const confirmBtn = overlay.querySelector('.dialog-confirm');
       let settled = false;
 
       function close(result) {
@@ -88,34 +65,146 @@ const DartsUI = (() => {
         resolve(result);
       }
 
+      // Tabbare Elemente: Buttons, Selects und je Radiogruppe nur das
+      // angehakte Radio (so wie der Browser selbst durch Gruppen tabbt).
+      function focusables() {
+        return Array.from(
+          overlay.querySelectorAll('button, select, input:not([type="radio"]), input[type="radio"]:checked')
+        ).filter((el) => !el.disabled);
+      }
+
       function onKey(e) {
         if (e.key === 'Escape') {
           e.preventDefault();
-          close(false);
+          close(dismissValue);
         } else if (e.key === 'Tab') {
-          // Einfacher Fokus-Trap zwischen den beiden Buttons.
-          e.preventDefault();
-          const order = [cancelBtn, confirmBtn];
-          const idx = order.indexOf(document.activeElement);
-          const next = e.shiftKey
-            ? idx <= 0
-              ? order.length - 1
-              : idx - 1
-            : idx >= order.length - 1
-            ? 0
-            : idx + 1;
-          order[next].focus();
+          const f = focusables();
+          if (!f.length) return;
+          const first = f[0];
+          const last = f[f.length - 1];
+          const inside = overlay.contains(document.activeElement);
+          if (e.shiftKey && (document.activeElement === first || !inside)) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+            e.preventDefault();
+            first.focus();
+          }
         }
       }
 
       overlay.addEventListener('pointerdown', (e) => {
-        if (e.target === overlay) close(false);
+        if (e.target === overlay) close(dismissValue);
       });
-      cancelBtn.addEventListener('click', () => close(false));
-      confirmBtn.addEventListener('click', () => close(true));
       document.addEventListener('keydown', onKey, true);
-      cancelBtn.focus();
+      const initialFocus = wire(overlay, close);
+      if (initialFocus) initialFocus.focus();
     });
+  }
+
+  // Eigener Bestätigungsdialog im App-Design (ersetzt window.confirm).
+  // Liefert ein Promise<boolean>.
+  function confirmDialog({
+    title = '',
+    message = '',
+    confirmLabel = 'OK',
+    cancelLabel = 'Abbrechen',
+    danger = false,
+  } = {}) {
+    const card = `
+      <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 class="dialog-title" id="dialog-title">${escapeHtml(title)}</h2>
+        ${message ? `<p class="dialog-message">${escapeHtml(message)}</p>` : ''}
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary dialog-cancel">${escapeHtml(
+            cancelLabel
+          )}</button>
+          <button type="button" class="btn ${
+            danger ? 'btn-danger' : 'btn-primary'
+          } dialog-confirm">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    return openOverlay(
+      card,
+      (overlay, close) => {
+        const cancelBtn = overlay.querySelector('.dialog-cancel');
+        overlay
+          .querySelector('.dialog-confirm')
+          .addEventListener('click', () => close(true));
+        cancelBtn.addEventListener('click', () => close(false));
+        return cancelBtn;
+      },
+      false
+    );
+  }
+
+  function themeItemHtml(val, label, currentTheme) {
+    return `
+      <label class="seg-item">
+        <input type="radio" name="theme" value="${val}" ${
+      val === currentTheme ? 'checked' : ''
+    }>
+        ${ICON[val]}
+        <span>${label}</span>
+      </label>`;
+  }
+
+  function soundItemHtml(val, label, soundOn) {
+    return `
+      <label class="seg-item">
+        <input type="radio" name="sound" value="${val}" ${
+      (val === 'on') === soundOn ? 'checked' : ''
+    }>
+        ${val === 'on' ? ICON.soundOn : ICON.soundOff}
+        <span>${label}</span>
+      </label>`;
+  }
+
+  // Einstellungen-Modal (Darstellung + Ton). Änderungen greifen sofort über
+  // die Callbacks; „Fertig", Escape oder Tipp daneben schließen.
+  function settingsDialog({ theme, soundOn, onThemeChange, onSoundChange }) {
+    const card = `
+      <div class="dialog-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <h2 class="dialog-title" id="settings-title">Einstellungen</h2>
+        <div class="settings-group">
+          <span class="legend-row">Darstellung</span>
+          <div class="theme-seg" role="radiogroup" aria-label="Darstellung">
+            ${themeItemHtml('system', 'System', theme)}
+            ${themeItemHtml('light', 'Hell', theme)}
+            ${themeItemHtml('dark', 'Dunkel', theme)}
+          </div>
+        </div>
+        <div class="settings-group">
+          <span class="legend-row">Ton beim Wurf</span>
+          <div class="theme-seg" role="radiogroup" aria-label="Ton beim Wurf">
+            ${soundItemHtml('on', 'An', soundOn)}
+            ${soundItemHtml('off', 'Aus', soundOn)}
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-primary dialog-done">Fertig</button>
+        </div>
+      </div>`;
+    return openOverlay(
+      card,
+      (overlay, close) => {
+        overlay.querySelectorAll('input[name="theme"]').forEach((radio) => {
+          radio.addEventListener('change', () => {
+            if (radio.checked && onThemeChange) onThemeChange(radio.value);
+          });
+        });
+        overlay.querySelectorAll('input[name="sound"]').forEach((radio) => {
+          radio.addEventListener('change', () => {
+            if (radio.checked && onSoundChange)
+              onSoundChange(radio.value === 'on');
+          });
+        });
+        const done = overlay.querySelector('.dialog-done');
+        done.addEventListener('click', () => close());
+        return done;
+      },
+      undefined
+    );
   }
 
   function tweenNumber(el, from, to, duration = 240) {
@@ -240,9 +329,9 @@ const DartsUI = (() => {
   // weil die Kennzahlen andere sind als beim X01-Training.
   function clockSectionHtml(runs) {
     if (!Array.isArray(runs) || runs.length === 0) return '';
-    const dirLabel = { up: 'Auf', down: 'Ab', updown: 'Hin & zurück' };
+    const dirLabel = { up: 'Auf', down: 'Ab', updown: 'Auf &amp; ab' };
     const diffLabel = {
-      all: 'Alle',
+      all: 'Alle Felder',
       single: 'Single',
       double: 'Double',
       triple: 'Triple',
@@ -310,7 +399,7 @@ const DartsUI = (() => {
     const startScore = START_SCORE_OPTIONS.includes(settings.lastStartScore)
       ? settings.lastStartScore
       : 501;
-    const currentTheme = ['system', 'light', 'dark'].includes(theme)
+    let currentTheme = ['system', 'light', 'dark'].includes(theme)
       ? theme
       : 'system';
 
@@ -332,49 +421,15 @@ const DartsUI = (() => {
     const names = (settings.lastNames || []).slice(0, 4);
     while (names.length < count) names.push('');
 
-    const themeItem = (val, label) => `
-      <label class="seg-item">
-        <input type="radio" name="theme" value="${val}" ${
-      val === currentTheme ? 'checked' : ''
-    }>
-        ${ICON[val]}
-        <span>${label}</span>
-      </label>`;
-
-    // Ton beim Wurf-Einloggen (Default: an).
-    const soundOn = settings.sound !== false;
-    const soundItem = (val, label) => `
-      <label class="seg-item">
-        <input type="radio" name="sound" value="${val}" ${
-      (val === 'on') === soundOn ? 'checked' : ''
-    }>
-        ${val === 'on' ? ICON.soundOn : ICON.soundOff}
-        <span>${label}</span>
-      </label>`;
+    // Ton beim Wurf-Einloggen (Default: an). Mutable, weil das
+    // Einstellungen-Modal den Wert ändert, ohne das Setup neu zu rendern.
+    let soundOn = settings.sound !== false;
 
     root.innerHTML = `
       <section class="setup">
         <img src="./assets/icons/icon-192.png" alt="" class="setup-icon">
         <h1>Schü's Darts Counter</h1>
         <div id="setup-form">
-          <div class="field">
-            <span class="field-label">Spielmodus</span>
-            <div class="seg" role="radiogroup">
-              <label class="seg-item">
-                <input type="radio" name="mode" value="x01" ${
-                  mode === 'x01' ? 'checked' : ''
-                }>
-                <span>X01</span>
-              </label>
-              <label class="seg-item">
-                <input type="radio" name="mode" value="clock" ${
-                  mode === 'clock' ? 'checked' : ''
-                }>
-                <span>Around the Clock</span>
-              </label>
-            </div>
-          </div>
-
           <div class="field">
             <span class="field-label">Spieler:innen Anzahl</span>
             <div class="seg" role="radiogroup">
@@ -395,6 +450,24 @@ const DartsUI = (() => {
           <div class="field">
             <span class="field-label">Spieler:innen Name</span>
             <div id="names-box" class="names"></div>
+          </div>
+
+          <div class="field">
+          <span class="field-label">Spielmodus</span>
+          <div class="mode-panel">
+          <div class="mode-tabs" role="radiogroup" aria-label="Spielmodus">
+            <label class="mode-tab" data-mode="x01">
+              <input type="radio" name="mode" value="x01" ${
+                mode === 'x01' ? 'checked' : ''
+              }>
+              <span>X01</span>
+            </label>
+            <label class="mode-tab" data-mode="clock">
+              <input type="radio" name="mode" value="clock" ${
+                mode === 'clock' ? 'checked' : ''
+              }>
+              <span>Around the Clock</span>
+            </label>
           </div>
 
           <div class="mode-fields" data-mode="x01"${
@@ -455,7 +528,7 @@ const DartsUI = (() => {
                   <input type="radio" name="direction" value="updown" ${
                     clockDirection === 'updown' ? 'checked' : ''
                   }>
-                  <span>Hin &amp; zurück</span>
+                  <span>Auf &amp; ab</span>
                 </label>
               </div>
             </div>
@@ -466,7 +539,7 @@ const DartsUI = (() => {
                 <select name="difficulty" aria-label="Schwierigkeit">
                   <option value="all" ${
                     clockDifficulty === 'all' ? 'selected' : ''
-                  }>Alle (S/D/T)</option>
+                  }>Alle Felder zählen</option>
                   <option value="single" ${
                     clockDifficulty === 'single' ? 'selected' : ''
                   }>Nur Single</option>
@@ -498,24 +571,12 @@ const DartsUI = (() => {
               </div>
             </div>
           </div>
-
-          <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
-        </div>
-
-        <div class="theme-switch">
-          <span class="legend-row">Darstellung</span>
-          <div class="theme-seg" role="radiogroup">
-            ${themeItem('system', 'System')}
-            ${themeItem('light', 'Hell')}
-            ${themeItem('dark', 'Dunkel')}
           </div>
-        </div>
+          </div>
 
-        <div class="theme-switch sound-switch">
-          <span class="legend-row">Ton beim Wurf</span>
-          <div class="theme-seg" role="radiogroup">
-            ${soundItem('on', 'An')}
-            ${soundItem('off', 'Aus')}
+          <div class="setup-actions">
+            <button type="button" id="start-btn" class="btn btn-primary btn-big">Spiel starten</button>
+            <button type="button" id="settings-btn" class="btn btn-secondary btn-settings">Einstellungen</button>
           </div>
         </div>
 
@@ -675,19 +736,22 @@ const DartsUI = (() => {
       handle.addEventListener('pointercancel', onUp);
     }
 
-    // --- Theme-Umschalter ---
-    root.querySelectorAll('input[name="theme"]').forEach((radio) => {
-      radio.addEventListener('change', () => {
-        if (radio.checked) handlers.onThemeChange(radio.value);
-      });
-    });
-
-    // --- Ton-Umschalter ---
-    root.querySelectorAll('input[name="sound"]').forEach((radio) => {
-      radio.addEventListener('change', () => {
-        if (radio.checked && handlers.onSoundChange) {
-          handlers.onSoundChange(radio.value === 'on');
-        }
+    // --- Einstellungen-Modal (Darstellung + Ton) ---
+    const settingsBtn = root.querySelector('#settings-btn');
+    // Gleicher Schutz wie beim Start-Button (kein Fokus-Scroll beim mousedown).
+    settingsBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    settingsBtn.addEventListener('click', () => {
+      settingsDialog({
+        theme: currentTheme,
+        soundOn,
+        onThemeChange: (mode) => {
+          currentTheme = mode;
+          handlers.onThemeChange(mode);
+        },
+        onSoundChange: (on) => {
+          soundOn = on;
+          if (handlers.onSoundChange) handlers.onSoundChange(on);
+        },
       });
     });
 
@@ -1078,12 +1142,33 @@ const DartsUI = (() => {
       ? state.currentTurnDarts.length - 1
       : -1;
 
+    // Pro Wurf der Aufnahme ermitteln, ob er das jeweils aktuelle Ziel
+    // getroffen hat (Replay ab Aufnahme-Start). Fehlwürfe werden rot
+    // dargestellt und schütteln sich beim Einloggen – wie „Bust" in X01.
+    const hitFlags = [];
+    let replayIdx = state.targetIdxAtTurnStart;
+    for (const d of state.currentTurnDarts) {
+      const hit =
+        replayIdx < seqLen &&
+        DartsClock.dartHitsTarget(
+          d,
+          state.sequence[replayIdx],
+          state.difficulty
+        );
+      hitFlags.push(hit);
+      if (hit) replayIdx++;
+    }
+
     const slots = Array.from({ length: MAX_DARTS_PER_TURN }, (_, i) => {
       const d = state.currentTurnDarts[i];
       if (!d) return `<div class="slot"></div>`;
+      const missed = !hitFlags[i];
       const cls = ['slot', 'filled'];
-      if (i === justFilledIdx) cls.push('just-filled');
-      return `<div class="${cls.join(' ')}">${dartLabel(d)}</div>`;
+      if (missed) cls.push('slot-miss');
+      if (i === justFilledIdx) cls.push(missed ? 'miss-flash' : 'just-filled');
+      return `<div class="${cls.join(' ')}"${
+        missed ? ' aria-label="Fehlwurf"' : ''
+      }>${dartLabel(d)}</div>`;
     }).join('');
 
     const scoreboard = state.players
@@ -1173,13 +1258,14 @@ const DartsUI = (() => {
       : `<button type="button" class="btn btn-secondary btn-quit" id="btn-quit">Spiel beenden</button>`;
 
     const dirLabel =
-      { up: 'Aufsteigend', down: 'Absteigend', updown: 'Hin & zurück' }[
-        state.direction
-      ] || '';
+      { up: 'Auf', down: 'Ab', updown: 'Auf &amp; ab' }[state.direction] || '';
     const diffLabel =
-      { all: 'Alle', single: 'Single', double: 'Double', triple: 'Triple' }[
-        state.difficulty
-      ] || '';
+      {
+        all: 'Alle Felder',
+        single: 'Single',
+        double: 'Double',
+        triple: 'Triple',
+      }[state.difficulty] || '';
     const caption = `Around the Clock · ${dirLabel} · ${diffLabel}${
       state.withBull ? ' · Bull' : ''
     }`;
