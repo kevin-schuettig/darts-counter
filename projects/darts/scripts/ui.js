@@ -1229,18 +1229,37 @@ const DartsUI = (() => {
       })
       .join('');
 
+    // Fokussierte Eingabe (Übergangslösung): Nur das aktuelle Ziel ist als
+    // Wert tippbar, alle anderen Tasten zeigen „X" und zählen als Fehlwurf.
+    const curTarget = hasWinner
+      ? null
+      : state.sequence[state.players[curIdx].targetIdx];
+    const dis = canRecord ? '' : 'disabled';
+    // S/D/T-Schalter nur, wenn der Ring eine Rolle spielt.
+    const showMultipliers = state.difficulty !== 'all';
+
     const numpadButtons = Array.from({ length: 20 }, (_, i) => {
       const n = i + 1;
-      return `<button type="button" class="num" data-n="${n}" ${
-        canRecord ? '' : 'disabled'
-      }>${n}</button>`;
+      if (n === curTarget) {
+        return `<button type="button" class="num num-target" data-n="${n}" ${dis}>${n}</button>`;
+      }
+      return `<button type="button" class="num num-x" data-x="1" aria-label="Daneben" ${dis}>X</button>`;
     }).join('');
     const numpad = `<div class="numpad mode-${armedMultiplier}">${numpadButtons}</div>`;
 
+    // Bull/Bullseye nur bei „Mit Bull" – und als X, solange Bull nicht dran ist.
+    const bullIsTarget = curTarget === 'bull';
+    const bullBtn = (special, label, pts) =>
+      bullIsTarget
+        ? `<button type="button" class="spec" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`
+        : `<button type="button" class="spec spec-x" data-special="miss" aria-label="Daneben" ${dis}>X</button>`;
     const specials = `
-      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>Miss <small>0</small></button>
-      <button type="button" class="spec" data-special="bull" ${canRecord ? '' : 'disabled'}>Bull <small>25</small></button>
-      <button type="button" class="spec" data-special="bullseye" ${canRecord ? '' : 'disabled'}>Bullseye <small>50</small></button>
+      <button type="button" class="spec" data-special="miss" ${dis}>Miss <small>0</small></button>
+      ${
+        state.withBull
+          ? bullBtn('bull', 'Bull', 25) + bullBtn('bullseye', 'Bullseye', 50)
+          : ''
+      }
     `;
 
     const undoDisabled = state.currentTurnDarts.length === 0;
@@ -1270,7 +1289,7 @@ const DartsUI = (() => {
     }`;
 
     root.innerHTML = `
-      <section class="game">
+      <section class="game mode-clock">
         <header class="scoreboard players-${state.players.length}">
           ${scoreboard}
         </header>
@@ -1286,10 +1305,14 @@ const DartsUI = (() => {
             ? ''
             : `
           <div class="input-group">
-            <div class="multipliers tab-strip">${multipliers}</div>
+            ${
+              showMultipliers
+                ? `<div class="multipliers tab-strip">${multipliers}</div>`
+                : ''
+            }
             ${numpad}
           </div>
-          <div class="specials">${specials}</div>
+          <div class="specials${state.withBull ? '' : ' specials-1'}">${specials}</div>
         `
         }
 
@@ -1328,6 +1351,12 @@ const DartsUI = (() => {
 
       root.querySelectorAll('.num').forEach((btn) => {
         btn.addEventListener('click', () => {
+          // X-Taste = Fehlwurf.
+          if (btn.dataset.x) {
+            armedMultiplier = 1;
+            handlers.onDart({ value: 0, multiplier: 1 });
+            return;
+          }
           const n = +btn.dataset.n;
           const m = armedMultiplier;
           armedMultiplier = 1;

@@ -1,6 +1,6 @@
 // Bei jedem Release die Versionsnummer hochzählen, damit Nutzer den neuen
 // Stand bekommen (sonst halten Browser den alten Cache hartnäckig fest).
-const CACHE_NAME = 'darts-counter-v14';
+const CACHE_NAME = 'darts-counter-v15';
 
 const ASSETS = [
   './',

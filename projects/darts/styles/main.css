@@ -33,6 +33,11 @@
   /* Around-the-Clock-Modusfarbe (Grün wie Triple): Text- und Druck-Variante */
   --clock-strong: #0b7d3e;
   --clock-press: #0e8a44;
+  /* Feste Grund-Farben für den Farbtausch im Clock-Spiel (Single ↔ Triple) */
+  --green: #12a150;
+  --on-green: #ffffff;
+  --blue: #4c6ef5;
+  --on-blue: #ffffff;
 
   --shadow-strong: rgba(15, 23, 42, 0.14);
 
@@ -76,6 +81,10 @@
 
     --clock-strong: #34d399;
     --clock-press: #2bb986;
+    --green: #34d399;
+    --on-green: #052718;
+    --blue: #6b8cff;
+    --on-blue: #0a1124;
 
     --shadow-strong: rgba(0, 0, 0, 0.6);
 
@@ -111,6 +120,10 @@
 
   --clock-strong: #34d399;
   --clock-press: #2bb986;
+  --green: #34d399;
+  --on-green: #052718;
+  --blue: #6b8cff;
+  --on-blue: #0a1124;
 
   --shadow-strong: rgba(0, 0, 0, 0.6);
 
@@ -279,9 +292,18 @@ button:not(:disabled):active {
   display: none;
 }
 
-/* Im weißen Rahmen brauchen Dropdowns die Zweitfläche, sonst verschwimmen sie. */
+/* Im weißen Rahmen brauchen Dropdowns die Zweitfläche, sonst verschwimmen sie.
+   Schrift + Pfeil in der Modusfarbe (X01 blau, Around the Clock grün). */
 .mode-panel .field-select {
   background: var(--surface-2);
+}
+
+.mode-panel .field-select select {
+  color: var(--accent-strong);
+}
+
+.mode-panel .field-select::after {
+  border-color: var(--accent-strong);
 }
 
 /* Modusfarbe: Im Around-the-Clock-Modus wird der Akzent IN der Box grün –
@@ -844,6 +866,19 @@ button:not(:disabled):active {
   opacity: 0.75;
 }
 
+/* Around the Clock im Spiel: Grün ist die Hauptfarbe (aktive Karte,
+   Wurf-Felder, „Weiter", Single); Triple wird dafür blau (Farbtausch). */
+.game.mode-clock {
+  --accent: var(--green);
+  --accent-press: var(--clock-press);
+  --accent-strong: var(--clock-strong);
+  --on-accent: var(--on-green);
+  --mult-single: var(--green);
+  --on-single: var(--on-green);
+  --mult-triple: var(--blue);
+  --on-triple: var(--on-blue);
+}
+
 /* Around the Clock: Zielzahl statt Restscore + Solo-Ergebniszeile. */
 .ptarget {
   font-size: clamp(1.5rem, 6.5vw, 2.2rem);
@@ -1071,6 +1106,18 @@ button:not(:disabled):active {
 }
 .numpad.mode-3 .num {
   color: var(--mult-triple);
+}
+
+/* Around the Clock: Nicht-Ziel-Tasten als dezentes „X" (= Fehlwurf). */
+.numpad .num.num-x,
+.spec.spec-x {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Ohne Bull: „Miss" über die ganze Breite. */
+.specials.specials-1 {
+  grid-template-columns: 1fr;
 }
 
 .num:not(:disabled):active {
