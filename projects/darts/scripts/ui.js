@@ -31,6 +31,93 @@ const DartsUI = (() => {
     }
   }
 
+  // Eigener Bestätigungsdialog im App-Design (ersetzt window.confirm). Der
+  // Hintergrund wird weichgezeichnet. Liefert ein Promise<boolean>.
+  function confirmDialog({
+    title = '',
+    message = '',
+    confirmLabel = 'OK',
+    cancelLabel = 'Abbrechen',
+    danger = false,
+  } = {}) {
+    return new Promise((resolve) => {
+      const prevFocus = document.activeElement;
+      const overlay = document.createElement('div');
+      overlay.className = 'dialog-overlay';
+      overlay.innerHTML = `
+        <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <h2 class="dialog-title" id="dialog-title">${escapeHtml(title)}</h2>
+          ${
+            message
+              ? `<p class="dialog-message">${escapeHtml(message)}</p>`
+              : ''
+          }
+          <div class="dialog-actions">
+            <button type="button" class="btn btn-secondary dialog-cancel">${escapeHtml(
+              cancelLabel
+            )}</button>
+            <button type="button" class="btn ${
+              danger ? 'btn-danger' : 'btn-primary'
+            } dialog-confirm">${escapeHtml(confirmLabel)}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      document.body.classList.add('dialog-open');
+      requestAnimationFrame(() => overlay.classList.add('show'));
+
+      const cancelBtn = overlay.querySelector('.dialog-cancel');
+      const confirmBtn = overlay.querySelector('.dialog-confirm');
+      let settled = false;
+
+      function close(result) {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKey, true);
+        overlay.classList.remove('show');
+        document.body.classList.remove('dialog-open');
+        const cleanup = () => {
+          overlay.remove();
+          if (prevFocus && typeof prevFocus.focus === 'function') {
+            try {
+              prevFocus.focus();
+            } catch {}
+          }
+        };
+        if (prefersReducedMotion()) cleanup();
+        else setTimeout(cleanup, 160);
+        resolve(result);
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          close(false);
+        } else if (e.key === 'Tab') {
+          // Einfacher Fokus-Trap zwischen den beiden Buttons.
+          e.preventDefault();
+          const order = [cancelBtn, confirmBtn];
+          const idx = order.indexOf(document.activeElement);
+          const next = e.shiftKey
+            ? idx <= 0
+              ? order.length - 1
+              : idx - 1
+            : idx >= order.length - 1
+            ? 0
+            : idx + 1;
+          order[next].focus();
+        }
+      }
+
+      overlay.addEventListener('pointerdown', (e) => {
+        if (e.target === overlay) close(false);
+      });
+      cancelBtn.addEventListener('click', () => close(false));
+      confirmBtn.addEventListener('click', () => close(true));
+      document.addEventListener('keydown', onKey, true);
+      cancelBtn.focus();
+    });
+  }
+
   function tweenNumber(el, from, to, duration = 240) {
     if (from === to || !el) return;
     if (prefersReducedMotion()) {
@@ -149,7 +236,72 @@ const DartsUI = (() => {
       </div>`;
   }
 
-  function renderSetup(root, settings, theme, handlers, training = [], version = '') {
+  // Around-the-Clock-Solo-Verlauf (Home, nur bei Einträgen). Eigene Tabelle,
+  // weil die Kennzahlen andere sind als beim X01-Training.
+  function clockSectionHtml(runs) {
+    if (!Array.isArray(runs) || runs.length === 0) return '';
+    const dirLabel = { up: 'Auf', down: 'Ab', updown: 'Hin & zurück' };
+    const diffLabel = {
+      all: 'Alle',
+      single: 'Single',
+      double: 'Double',
+      triple: 'Triple',
+    };
+    const rows = runs
+      .map((e) => {
+        const d = new Date(e.date);
+        const dateLabel = isNaN(d.getTime())
+          ? '–'
+          : `${String(d.getDate()).padStart(2, '0')}.${String(
+              d.getMonth() + 1
+            ).padStart(2, '0')}.`;
+        const darts = typeof e.darts === 'number' ? e.darts : null;
+        const targets = typeof e.targets === 'number' ? e.targets : null;
+        const quote =
+          darts && targets ? `${Math.round((targets / darts) * 100)}%` : '–';
+        return `
+          <tr>
+            <td class="t-date">${dateLabel}</td>
+            <td class="t-dir">${dirLabel[e.direction] || '–'}</td>
+            <td class="t-diff">${diffLabel[e.difficulty] || '–'}</td>
+            <td class="t-bull">${e.withBull ? 'Ja' : 'Nein'}</td>
+            <td class="t-darts">${darts != null ? darts : '–'}</td>
+            <td class="t-quote">${quote}</td>
+          </tr>`;
+      })
+      .join('');
+
+    return `
+      <div class="training clock-history">
+        <span class="legend-row">Around-the-Clock-Verlauf</span>
+        <div class="training-table-wrap">
+          <table class="training-table">
+            <thead>
+              <tr>
+                <th class="t-date">Datum</th>
+                <th class="t-dir">Richtung</th>
+                <th class="t-diff">Modus</th>
+                <th class="t-bull">Bull</th>
+                <th class="t-darts">Würfe</th>
+                <th class="t-quote">Quote</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <button type="button" class="training-reset" id="clock-reset">Around-the-Clock-Verlauf zurücksetzen</button>
+      </div>`;
+  }
+
+  function renderSetup(
+    root,
+    settings,
+    theme,
+    handlers,
+    training = [],
+    clockRuns = [],
+    version = ''
+  ) {
     armedMultiplier = 1;
     resetAnimationState(null);
 
@@ -161,6 +313,20 @@ const DartsUI = (() => {
     const currentTheme = ['system', 'light', 'dark'].includes(theme)
       ? theme
       : 'system';
+
+    // Spielmodus + Around-the-Clock-Vorgaben (aus Settings, mit Defaults).
+    const mode = settings.mode === 'clock' ? 'clock' : 'x01';
+    const clockDirection = ['up', 'down', 'updown'].includes(
+      settings.clockDirection
+    )
+      ? settings.clockDirection
+      : 'up';
+    const clockDifficulty = ['all', 'single', 'double', 'triple'].includes(
+      settings.clockDifficulty
+    )
+      ? settings.clockDifficulty
+      : 'all';
+    const clockBull = settings.clockBull !== false;
 
     // Quelle der Wahrheit für Namen (kann leer sein → Platzhalter greift).
     const names = (settings.lastNames || []).slice(0, 4);
@@ -192,6 +358,24 @@ const DartsUI = (() => {
         <h1>Schü's Darts Counter</h1>
         <div id="setup-form">
           <div class="field">
+            <span class="field-label">Spielmodus</span>
+            <div class="seg" role="radiogroup">
+              <label class="seg-item">
+                <input type="radio" name="mode" value="x01" ${
+                  mode === 'x01' ? 'checked' : ''
+                }>
+                <span>X01</span>
+              </label>
+              <label class="seg-item">
+                <input type="radio" name="mode" value="clock" ${
+                  mode === 'clock' ? 'checked' : ''
+                }>
+                <span>Around the Clock</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
             <span class="field-label">Spieler:innen Anzahl</span>
             <div class="seg" role="radiogroup">
               ${[1, 2, 3, 4]
@@ -213,35 +397,105 @@ const DartsUI = (() => {
             <div id="names-box" class="names"></div>
           </div>
 
-          <div class="field">
-            <span class="field-label">Startpunkte</span>
-            <div class="field-select">
-              <select name="startScore" aria-label="Startpunkte">
-                ${START_SCORE_OPTIONS.map(
-                  (s) =>
-                    `<option value="${s}" ${
-                      s === startScore ? 'selected' : ''
-                    }>${s} Punkte</option>`
-                ).join('')}
-              </select>
+          <div class="mode-fields" data-mode="x01"${
+            mode === 'clock' ? ' hidden' : ''
+          }>
+            <div class="field">
+              <span class="field-label">Startpunkte</span>
+              <div class="field-select">
+                <select name="startScore" aria-label="Startpunkte">
+                  ${START_SCORE_OPTIONS.map(
+                    (s) =>
+                      `<option value="${s}" ${
+                        s === startScore ? 'selected' : ''
+                      }>${s} Punkte</option>`
+                  ).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Out-Modus</span>
+              <div class="seg" role="radiogroup">
+                <label class="seg-item">
+                  <input type="radio" name="out" value="single" ${
+                    outMode === 'single' ? 'checked' : ''
+                  }>
+                  <span>Single-Out</span>
+                </label>
+                <label class="seg-item">
+                  <input type="radio" name="out" value="double" ${
+                    outMode === 'double' ? 'checked' : ''
+                  }>
+                  <span>Double-Out</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          <div class="field">
-            <span class="field-label">Out-Modus</span>
-            <div class="seg" role="radiogroup">
-              <label class="seg-item">
-                <input type="radio" name="out" value="single" ${
-                  outMode === 'single' ? 'checked' : ''
-                }>
-                <span>Single-Out</span>
-              </label>
-              <label class="seg-item">
-                <input type="radio" name="out" value="double" ${
-                  outMode === 'double' ? 'checked' : ''
-                }>
-                <span>Double-Out</span>
-              </label>
+          <div class="mode-fields" data-mode="clock"${
+            mode === 'x01' ? ' hidden' : ''
+          }>
+            <div class="field">
+              <span class="field-label">Richtung</span>
+              <div class="seg" role="radiogroup">
+                <label class="seg-item">
+                  <input type="radio" name="direction" value="up" ${
+                    clockDirection === 'up' ? 'checked' : ''
+                  }>
+                  <span>Auf</span>
+                </label>
+                <label class="seg-item">
+                  <input type="radio" name="direction" value="down" ${
+                    clockDirection === 'down' ? 'checked' : ''
+                  }>
+                  <span>Ab</span>
+                </label>
+                <label class="seg-item">
+                  <input type="radio" name="direction" value="updown" ${
+                    clockDirection === 'updown' ? 'checked' : ''
+                  }>
+                  <span>Hin &amp; zurück</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Schwierigkeit</span>
+              <div class="field-select">
+                <select name="difficulty" aria-label="Schwierigkeit">
+                  <option value="all" ${
+                    clockDifficulty === 'all' ? 'selected' : ''
+                  }>Alle (S/D/T)</option>
+                  <option value="single" ${
+                    clockDifficulty === 'single' ? 'selected' : ''
+                  }>Nur Single</option>
+                  <option value="double" ${
+                    clockDifficulty === 'double' ? 'selected' : ''
+                  }>Nur Double</option>
+                  <option value="triple" ${
+                    clockDifficulty === 'triple' ? 'selected' : ''
+                  }>Nur Triple</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Bull</span>
+              <div class="seg" role="radiogroup">
+                <label class="seg-item">
+                  <input type="radio" name="bull" value="on" ${
+                    clockBull ? 'checked' : ''
+                  }>
+                  <span>Mit Bull</span>
+                </label>
+                <label class="seg-item">
+                  <input type="radio" name="bull" value="off" ${
+                    !clockBull ? 'checked' : ''
+                  }>
+                  <span>Ohne Bull</span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -266,6 +520,8 @@ const DartsUI = (() => {
         </div>
 
         ${trainingSectionHtml(training)}
+
+        ${clockSectionHtml(clockRuns)}
 
         ${
           version
@@ -307,6 +563,17 @@ const DartsUI = (() => {
         count = +radio.value;
         while (names.length < count) names.push('');
         renderNames();
+      });
+    });
+
+    // --- Spielmodus-Umschalter: passende Feld-Gruppe zeigen ---
+    const modeFields = Array.from(root.querySelectorAll('.mode-fields'));
+    form.querySelectorAll('input[name="mode"]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (!radio.checked) return;
+        modeFields.forEach((el) => {
+          el.hidden = el.dataset.mode !== radio.value;
+        });
       });
     });
 
@@ -428,9 +695,29 @@ const DartsUI = (() => {
     const trainingReset = root.querySelector('#training-reset');
     if (trainingReset) {
       trainingReset.addEventListener('click', () => {
-        if (confirm('Trainingsverlauf wirklich löschen?')) {
-          handlers.onResetTraining();
-        }
+        confirmDialog({
+          title: 'Trainingsverlauf löschen?',
+          message: 'Alle gespeicherten X01-Solo-Läufe werden entfernt.',
+          confirmLabel: 'Löschen',
+          danger: true,
+        }).then((ok) => {
+          if (ok) handlers.onResetTraining();
+        });
+      });
+    }
+
+    // --- Around-the-Clock-Verlauf zuruecksetzen ---
+    const clockReset = root.querySelector('#clock-reset');
+    if (clockReset) {
+      clockReset.addEventListener('click', () => {
+        confirmDialog({
+          title: 'Around-the-Clock-Verlauf löschen?',
+          message: 'Alle gespeicherten Solo-Läufe werden entfernt.',
+          confirmLabel: 'Löschen',
+          danger: true,
+        }).then((ok) => {
+          if (ok && handlers.onResetClock) handlers.onResetClock();
+        });
       });
     }
 
@@ -444,13 +731,29 @@ const DartsUI = (() => {
         { length: count },
         (_, i) => (names[i] || '').trim() || `Spieler ${i + 1}`
       );
-      const out = form.querySelector('input[name="out"]:checked');
-      const sel = form.querySelector('select[name="startScore"]');
-      handlers.onStart({
-        names: finalNames,
-        outMode: out ? out.value : 'single',
-        startScore: sel ? +sel.value : 501,
-      });
+      const modeSel = form.querySelector('input[name="mode"]:checked');
+      const chosenMode = modeSel ? modeSel.value : 'x01';
+      if (chosenMode === 'clock') {
+        const dir = form.querySelector('input[name="direction"]:checked');
+        const diff = form.querySelector('select[name="difficulty"]');
+        const bull = form.querySelector('input[name="bull"]:checked');
+        handlers.onStart({
+          mode: 'clock',
+          names: finalNames,
+          direction: dir ? dir.value : 'up',
+          difficulty: diff ? diff.value : 'all',
+          withBull: bull ? bull.value === 'on' : true,
+        });
+      } else {
+        const out = form.querySelector('input[name="out"]:checked');
+        const sel = form.querySelector('select[name="startScore"]');
+        handlers.onStart({
+          mode: 'x01',
+          names: finalNames,
+          outMode: out ? out.value : 'single',
+          startScore: sel ? +sel.value : 501,
+        });
+      }
     }
 
     // Kern-Fix des „erster Klick verpufft"-Bugs:
@@ -472,6 +775,7 @@ const DartsUI = (() => {
   }
 
   function renderGame(root, state, handlers) {
+    if (state.mode === 'clock') return renderClockGame(root, state, handlers);
     const curIdx = state.currentPlayerIdx;
     const hasWinner = state.winnerIdx !== null;
     const canRecord =
@@ -747,7 +1051,246 @@ const DartsUI = (() => {
     const quitBtnEl = root.querySelector('#btn-quit');
     if (quitBtnEl)
       quitBtnEl.addEventListener('click', () => {
-        if (confirm('Spiel wirklich beenden?')) handlers.onNewGame();
+        confirmDialog({
+          title: 'Spiel beenden?',
+          message: 'Der aktuelle Spielstand geht verloren.',
+          confirmLabel: 'Beenden',
+          danger: true,
+        }).then((ok) => {
+          if (ok) handlers.onNewGame();
+        });
+      });
+  }
+
+  // Spiel-Screen für „Around the Clock". Nutzt dasselbe Wurf-Eingabe-Pad wie
+  // X01, zeigt aber pro Person die aktuelle Zielzahl statt eines Restscores.
+  function renderClockGame(root, state, handlers) {
+    const curIdx = state.currentPlayerIdx;
+    const hasWinner = state.winnerIdx !== null;
+    const canRecord =
+      !hasWinner && state.currentTurnDarts.length < MAX_DARTS_PER_TURN;
+    const seqLen = state.sequence.length;
+
+    const newDartAdded =
+      state.currentPlayerIdx === lastPlayerIdx &&
+      state.currentTurnDarts.length === lastTurnDartsLength + 1;
+    const justFilledIdx = newDartAdded
+      ? state.currentTurnDarts.length - 1
+      : -1;
+
+    const slots = Array.from({ length: MAX_DARTS_PER_TURN }, (_, i) => {
+      const d = state.currentTurnDarts[i];
+      if (!d) return `<div class="slot"></div>`;
+      const cls = ['slot', 'filled'];
+      if (i === justFilledIdx) cls.push('just-filled');
+      return `<div class="${cls.join(' ')}">${dartLabel(d)}</div>`;
+    }).join('');
+
+    const scoreboard = state.players
+      .map((p, i) => {
+        const isCurrent = i === curIdx && !hasWinner;
+        const isWinner = state.winnerIdx === i;
+        const classes = [
+          'player',
+          isCurrent ? 'active' : '',
+          isWinner ? 'winner' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const target =
+          p.targetIdx >= seqLen ? null : state.sequence[p.targetIdx];
+        const label = p.finished
+          ? '✓'
+          : DartsClock.targetLabel(target, state.difficulty);
+        const progress = p.finished
+          ? 'fertig'
+          : `${Math.min(p.targetIdx, seqLen)}/${seqLen}`;
+        return `
+          <div class="${classes}" data-pidx="${i}">
+            <div class="pname">${escapeHtml(p.name)}</div>
+            <div class="pscore ptarget">${label}</div>
+            <div class="pavg">${progress}</div>
+          </div>`;
+      })
+      .join('');
+
+    let statusLine;
+    if (hasWinner) {
+      statusLine = `<span class="status status-win">🏆 ${escapeHtml(
+        state.players[state.winnerIdx].name
+      )} gewinnt!</span>`;
+    } else {
+      const t = state.sequence[state.players[curIdx].targetIdx];
+      statusLine = `<span class="status">Triff ${DartsClock.targetLabel(
+        t,
+        state.difficulty
+      )} · Wurf ${state.currentTurnDarts.length}/3</span>`;
+    }
+
+    let winSummary = '';
+    if (hasWinner && state.players.length === 1) {
+      const p = state.players[0];
+      const darts = p.committedDarts + state.currentTurnDarts.length;
+      const quote = darts > 0 ? Math.round((seqLen / darts) * 100) : 0;
+      winSummary = `<div class="clock-summary">${darts} Würfe · ${quote}% Trefferquote</div>`;
+    }
+
+    const multipliers = [1, 2, 3]
+      .map((m) => {
+        const label = m === 1 ? 'Single' : m === 2 ? 'Double' : 'Triple';
+        const on = armedMultiplier === m ? 'on' : '';
+        return `<button type="button" class="mult ${on}" data-m="${m}" ${
+          canRecord ? '' : 'disabled'
+        }>${label}</button>`;
+      })
+      .join('');
+
+    const numpadButtons = Array.from({ length: 20 }, (_, i) => {
+      const n = i + 1;
+      return `<button type="button" class="num" data-n="${n}" ${
+        canRecord ? '' : 'disabled'
+      }>${n}</button>`;
+    }).join('');
+    const numpad = `<div class="numpad mode-${armedMultiplier}">${numpadButtons}</div>`;
+
+    const specials = `
+      <button type="button" class="spec" data-special="miss" ${canRecord ? '' : 'disabled'}>Miss <small>0</small></button>
+      <button type="button" class="spec" data-special="bull" ${canRecord ? '' : 'disabled'}>Bull <small>25</small></button>
+      <button type="button" class="spec" data-special="bullseye" ${canRecord ? '' : 'disabled'}>Bullseye <small>50</small></button>
+    `;
+
+    const undoDisabled = state.currentTurnDarts.length === 0;
+    const turnOver =
+      hasWinner || state.currentTurnDarts.length >= MAX_DARTS_PER_TURN;
+    const slideIn = turnOver && !lastTurnOver;
+
+    const primaryBtn = hasWinner
+      ? `<button type="button" class="btn btn-primary btn-weiter" id="btn-newgame">Neues Spiel</button>`
+      : `<button type="button" class="btn btn-primary btn-weiter" id="btn-end">Weiter</button>`;
+
+    const quitBtn = hasWinner
+      ? ''
+      : `<button type="button" class="btn btn-secondary btn-quit" id="btn-quit">Spiel beenden</button>`;
+
+    const dirLabel =
+      { up: 'Aufsteigend', down: 'Absteigend', updown: 'Hin & zurück' }[
+        state.direction
+      ] || '';
+    const diffLabel =
+      { all: 'Alle', single: 'Single', double: 'Double', triple: 'Triple' }[
+        state.difficulty
+      ] || '';
+    const caption = `Around the Clock · ${dirLabel} · ${diffLabel}${
+      state.withBull ? ' · Bull' : ''
+    }`;
+
+    root.innerHTML = `
+      <section class="game">
+        <header class="scoreboard players-${state.players.length}">
+          ${scoreboard}
+        </header>
+
+        <div class="turn">
+          <div class="slots">${slots}</div>
+          <div class="status-line">${statusLine}</div>
+          ${winSummary}
+        </div>
+
+        ${
+          hasWinner
+            ? ''
+            : `
+          <div class="input-group">
+            <div class="multipliers tab-strip">${multipliers}</div>
+            ${numpad}
+          </div>
+          <div class="specials">${specials}</div>
+        `
+        }
+
+        <div class="action-row">
+          <button type="button" class="btn btn-secondary btn-icon" id="btn-undo" ${
+            undoDisabled ? 'disabled' : ''
+          } aria-label="Letzten Wurf rückgängig">↶</button>
+          ${quitBtn}
+        </div>
+        <div class="mode-caption">${caption}</div>
+
+        <div class="primary-bar ${turnOver ? 'show' : ''} ${
+      slideIn ? 'slide-in' : ''
+    }">
+          ${primaryBtn}
+        </div>
+      </section>
+    `;
+
+    lastTurnDartsLength = state.currentTurnDarts.length;
+    lastPlayerIdx = state.currentPlayerIdx;
+    lastBust = false;
+    lastTurnOver = turnOver;
+
+    if (canRecord) {
+      root.querySelectorAll('.mult').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          armedMultiplier = +btn.dataset.m;
+          root.querySelectorAll('.mult').forEach((b) =>
+            b.classList.toggle('on', +b.dataset.m === armedMultiplier)
+          );
+          const numpadEl = root.querySelector('.numpad');
+          if (numpadEl) numpadEl.className = `numpad mode-${armedMultiplier}`;
+        });
+      });
+
+      root.querySelectorAll('.num').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const n = +btn.dataset.n;
+          const m = armedMultiplier;
+          armedMultiplier = 1;
+          handlers.onDart({ value: n, multiplier: m });
+        });
+      });
+
+      root.querySelectorAll('.spec').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const s = btn.dataset.special;
+          let dart;
+          if (s === 'miss') dart = { value: 0, multiplier: 1 };
+          else if (s === 'bull') dart = { value: 25, multiplier: 1 };
+          else dart = { value: 25, multiplier: 2 };
+          armedMultiplier = 1;
+          handlers.onDart(dart);
+        });
+      });
+    }
+
+    const undoBtn = root.querySelector('#btn-undo');
+    if (undoBtn)
+      undoBtn.addEventListener('click', () => {
+        armedMultiplier = 1;
+        handlers.onUndo();
+      });
+
+    const endBtn = root.querySelector('#btn-end');
+    if (endBtn)
+      endBtn.addEventListener('click', () => {
+        armedMultiplier = 1;
+        handlers.onEndTurn();
+      });
+
+    const newGameBtn = root.querySelector('#btn-newgame');
+    if (newGameBtn) newGameBtn.addEventListener('click', handlers.onNewGame);
+
+    const quitBtnEl = root.querySelector('#btn-quit');
+    if (quitBtnEl)
+      quitBtnEl.addEventListener('click', () => {
+        confirmDialog({
+          title: 'Spiel beenden?',
+          message: 'Der aktuelle Spielstand geht verloren.',
+          confirmLabel: 'Beenden',
+          danger: true,
+        }).then((ok) => {
+          if (ok) handlers.onNewGame();
+        });
       });
   }
 

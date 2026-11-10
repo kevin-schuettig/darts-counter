@@ -198,6 +198,17 @@ button:not(:disabled):active {
   gap: 1.25rem;
 }
 
+/* Modusabhängige Feld-Gruppen (X01 vs. Around the Clock). */
+.mode-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.mode-fields[hidden] {
+  display: none;
+}
+
 /* Gruppen-Label über den Setup-Feldern. Bewusst <div class="field"> + <span>
    statt <fieldset>/<legend>: WebKit reserviert bei <fieldset> mit <legend>
    ~25px Phantom-Höhe am unteren Rand, die erst der erste Tap per Reflow
@@ -411,6 +422,11 @@ button:not(:disabled):active {
   color: var(--text);
 }
 
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
 /* ===== Trainingsverlauf (Home, nur bei Eintraegen) ===== */
 .training {
   margin-top: 2.5rem;
@@ -472,10 +488,23 @@ button:not(:disabled):active {
 
 /* Zahlenspalten rechtsbuendig, feste Ziffernbreite (Mono-Ziffern ok) */
 .training-table .t-avg,
-.training-table .t-darts {
+.training-table .t-darts,
+.training-table .t-quote {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+/* Around-the-Clock-Verlauf: Nebenspalten dezent, Quote hervorgehoben. */
+.training-table .t-dir,
+.training-table .t-diff,
+.training-table .t-bull {
+  color: var(--muted);
+}
+
+.training-table td.t-quote {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .training-table td.t-avg {
@@ -715,6 +744,20 @@ button:not(:disabled):active {
 .player.winner .pavg {
   color: var(--text);
   opacity: 0.75;
+}
+
+/* Around the Clock: Zielzahl statt Restscore + Solo-Ergebniszeile. */
+.ptarget {
+  font-size: clamp(1.5rem, 6.5vw, 2.2rem);
+}
+
+.clock-summary {
+  text-align: center;
+  font-weight: 700;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  margin-top: 2px;
 }
 
 .turn {
@@ -1083,6 +1126,78 @@ select:focus-visible,
 .slot-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/* ===== Eigener Bestätigungsdialog (ersetzt window.confirm) ===== */
+body.dialog-open {
+  overflow: hidden;
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  /* Hintergrund weichzeichnen (+ dezente Abdunklung als Träger). */
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+/* Fallback ohne backdrop-filter: etwas kräftigere Abdunklung. */
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  .dialog-overlay {
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+  }
+}
+
+.dialog-overlay.show {
+  opacity: 1;
+}
+
+.dialog-card {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-md);
+  padding: 1.25rem;
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.16s ease;
+}
+
+.dialog-overlay.show .dialog-card {
+  transform: translateY(0) scale(1);
+}
+
+.dialog-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.dialog-message {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: var(--gap);
+}
+
+.dialog-actions .btn {
+  flex: 1;
 }
 
 /* ===== A11y: Bewegung reduzieren ===== */

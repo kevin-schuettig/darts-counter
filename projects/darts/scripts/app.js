@@ -20,15 +20,24 @@
     saveTrainingRun,
     removeLatestTrainingRun,
     clearTraining,
+    loadClockRuns,
+    saveClockRun,
+    removeLatestClockRun,
+    clearClockRuns,
   } = DartsStorage;
   const { renderSetup, renderGame, resetAnimationState } = DartsUI;
+
+  // Engine je nach Modus. X01 (DartsGame) und Around the Clock (DartsClock)
+  // bieten die gleichen Kern-Funktionen (recordDart, undoLastDart,
+  // replaceDart, endTurn, turnIsOver) mit kompatibler Signatur.
+  const engine = (st) => (st && st.mode === 'clock' ? DartsClock : DartsGame);
 
   const root = document.getElementById('app');
   let state = null;
 
   // Einzige Versions-Quelle. Bei jedem Release synchron zu CACHE_NAME
   // (service-worker.js) hochzaehlen.
-  const APP_VERSION = 'v11';
+  const APP_VERSION = 'v12';
 
   // Scroll-Position nicht vom Browser wiederherstellen lassen – das war eine
   // Mitursache des „erster Klick verpufft"-Bugs auf dem Home-Screen.
@@ -186,7 +195,9 @@
   } catch {}
 
   function persist() {
-    if (state) saveGame(state);
+    // Around-the-Clock-Spiele werden bewusst nicht zwischengespeichert
+    // (verlassen = vorbei). Nur X01 bekommt Resume.
+    if (state && state.mode !== 'clock') saveGame(state);
   }
 
   function showSetup() {
@@ -199,18 +210,40 @@
       settings,
       loadTheme(),
       {
-        onStart: ({ names, outMode, startScore }) => {
-          saveSettings({
+        onStart: (opts) => {
+          const { mode, names } = opts;
+          const base = {
             ...loadSettings(), // u.a. sound-Flag erhalten
-            outMode,
-            startScore,
+            mode,
             lastCount: names.length,
             lastNames: names,
-            lastStartScore: startScore,
-          });
-          state = createGame(names, outMode, startScore);
+          };
+          if (mode === 'clock') {
+            const { direction, difficulty, withBull } = opts;
+            saveSettings({
+              ...base,
+              clockDirection: direction,
+              clockDifficulty: difficulty,
+              clockBull: withBull,
+            });
+            state = DartsClock.createGame(names, {
+              direction,
+              difficulty,
+              withBull,
+            });
+            clearGame(); // keine veraltete X01-Partie hinterlassen
+          } else {
+            const { outMode, startScore } = opts;
+            saveSettings({
+              ...base,
+              outMode,
+              startScore,
+              lastStartScore: startScore,
+            });
+            state = createGame(names, outMode, startScore);
+          }
           resetAnimationState(state.players);
-          persist();
+          persist(); // no-op im Clock-Modus (siehe persist())
           showGame();
           scrollTopSmooth();
         },
@@ -231,8 +264,13 @@
           clearTraining();
           showSetup();
         },
+        onResetClock: () => {
+          clearClockRuns();
+          showSetup();
+        },
       },
       loadTraining(),
+      loadClockRuns(),
       APP_VERSION
     );
     // Genau einmal, synchron, an den Anfang – ohne rAF-Nachzügler, der den
@@ -243,6 +281,46 @@
   function showGame() {
     renderGame(root, state, {
       onDart: (dart) => {
+        if (state.mode === 'clock') {
+          const before = state.players[state.currentPlayerIdx].targetIdx;
+          DartsClock.recordDart(state, dart);
+          const advanced =
+            state.players[state.currentPlayerIdx].targetIdx > before;
+          // Solo-Aufzeichnung: nur 1 Spieler:in, genau einmal pro Sieg.
+          if (
+            state.winnerIdx !== null &&
+            state.players.length === 1 &&
+            !state.statRecorded
+          ) {
+            const player = state.players[0];
+            const darts = DartsClock.dartsUsed(
+              player,
+              state.currentTurnDarts.length
+            );
+            saveClockRun({
+              date: new Date().toISOString(),
+              direction: state.direction,
+              difficulty: state.difficulty,
+              withBull: state.withBull,
+              targets: state.sequence.length,
+              darts,
+            });
+            state.statRecorded = true;
+          }
+          if (state.winnerIdx !== null) {
+            haptic([100, 50, 100, 50, 200]);
+            playSound('win');
+          } else if (advanced) {
+            haptic(12);
+            playSound('click');
+          } else {
+            haptic(12);
+            playSound('miss'); // Ziel nicht getroffen
+          }
+          showGame();
+          scrollTopSmooth();
+          return;
+        }
         recordDart(state, dart);
         // Trainings-Aufzeichnung: nur Solo-Sieg, genau einmal pro Spiel.
         if (
@@ -278,6 +356,22 @@
         scrollTopSmooth();
       },
       onUndo: () => {
+        if (state.mode === 'clock') {
+          DartsClock.undoLastDart(state);
+          // Undo-Guard fürs Clock-Solo: Siegerwurf zurück → Lauf-Eintrag weg.
+          if (
+            state.statRecorded &&
+            state.winnerIdx === null &&
+            state.players.length === 1
+          ) {
+            removeLatestClockRun();
+            state.statRecorded = false;
+          }
+          haptic(8);
+          showGame();
+          scrollTopSmooth();
+          return;
+        }
         undoLastDart(state);
         // Undo-Guard: nimmt der Undo den Solo-Siegerwurf zurueck, wird der
         // gerade gespeicherte Trainingslauf wieder entfernt.
@@ -295,14 +389,14 @@
         scrollTopSmooth();
       },
       onEditDart: (index, dart) => {
-        replaceDart(state, index, dart);
+        engine(state).replaceDart(state, index, dart);
         persist();
         haptic(8);
         showGame();
       },
       onEndTurn: () => {
-        if (turnIsOver(state)) {
-          endTurn(state);
+        if (engine(state).turnIsOver(state)) {
+          engine(state).endTurn(state);
           persist();
           haptic(15);
         }
@@ -316,8 +410,14 @@
   }
 
   const saved = loadGame();
-  if (saved && saved.players && saved.winnerIdx === null) {
+  if (
+    saved &&
+    saved.players &&
+    saved.winnerIdx === null &&
+    saved.mode !== 'clock'
+  ) {
     state = saved;
+    if (!state.mode) state.mode = 'x01';
     if (!state.startScore) state.startScore = DartsGame.START_SCORE;
     state.players.forEach((p) => {
       if (!p.startScore) p.startScore = state.startScore;

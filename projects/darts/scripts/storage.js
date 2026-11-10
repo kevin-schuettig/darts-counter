@@ -3,8 +3,10 @@ const DartsStorage = (() => {
   const KEY_SETTINGS = 'darts:settings';
   const KEY_THEME = 'darts:theme';
   const KEY_TRAINING = 'darts:training';
+  const KEY_CLOCK_RUNS = 'darts:clock-runs';
   const VALID_THEMES = ['system', 'light', 'dark'];
   const TRAINING_MAX = 10;
+  const CLOCK_RUNS_MAX = 10;
 
   function saveGame(state) {
     try {
@@ -89,6 +91,42 @@ const DartsStorage = (() => {
     } catch {}
   }
 
+  // --- Around-the-Clock-Solo-Läufe (analog zum Training) -------------------
+  function loadClockRuns() {
+    try {
+      const raw = localStorage.getItem(KEY_CLOCK_RUNS);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveClockRun(entry) {
+    try {
+      const list = loadClockRuns();
+      list.unshift(entry);
+      localStorage.setItem(
+        KEY_CLOCK_RUNS,
+        JSON.stringify(list.slice(0, CLOCK_RUNS_MAX))
+      );
+    } catch {}
+  }
+
+  function removeLatestClockRun() {
+    try {
+      const list = loadClockRuns();
+      list.shift();
+      localStorage.setItem(KEY_CLOCK_RUNS, JSON.stringify(list));
+    } catch {}
+  }
+
+  function clearClockRuns() {
+    try {
+      localStorage.removeItem(KEY_CLOCK_RUNS);
+    } catch {}
+  }
+
   return {
     saveGame,
     loadGame,
@@ -101,5 +139,9 @@ const DartsStorage = (() => {
     saveTrainingRun,
     removeLatestTrainingRun,
     clearTraining,
+    loadClockRuns,
+    saveClockRun,
+    removeLatestClockRun,
+    clearClockRuns,
   };
 })();

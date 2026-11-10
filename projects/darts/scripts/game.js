@@ -192,6 +192,7 @@ const DartsGame = (() => {
   function createGame(playerNames, outMode = 'single', startScore = START_SCORE) {
     const start = START_SCORES.includes(startScore) ? startScore : START_SCORE;
     return {
+      mode: 'x01',
       outMode,
       startScore: start,
       players: playerNames.map((name) => ({
