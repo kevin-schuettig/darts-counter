@@ -1251,7 +1251,7 @@ const DartsUI = (() => {
     const bullIsTarget = curTarget === 'bull';
     const bullBtn = (special, label, pts) =>
       bullIsTarget
-        ? `<button type="button" class="spec" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`
+        ? `<button type="button" class="spec spec-target" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`
         : `<button type="button" class="spec spec-x" data-special="miss" aria-label="Daneben" ${dis}>X</button>`;
     const specials = `
       <button type="button" class="spec" data-special="miss" ${dis}>Miss <small>0</small></button>
