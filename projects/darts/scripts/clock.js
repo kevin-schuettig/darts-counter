@@ -55,6 +55,7 @@ const DartsClock = (() => {
       currentPlayerIdx: 0,
       currentTurnDarts: [],
       targetIdxAtTurnStart: 0,
+      round: 1, // läuft hoch, sobald alle einmal geworfen haben
       winnerIdx: null,
       statRecorded: false,
     };
@@ -151,6 +152,7 @@ const DartsClock = (() => {
     state.currentTurnDarts = [];
     state.currentPlayerIdx =
       (state.currentPlayerIdx + 1) % state.players.length;
+    if (state.currentPlayerIdx === 0) state.round = (state.round || 1) + 1;
     state.targetIdxAtTurnStart =
       state.players[state.currentPlayerIdx].targetIdx;
     return state;

@@ -394,6 +394,10 @@
               withBull: state.withBull,
               targets: state.sequence.length,
               darts,
+              quote:
+                darts > 0
+                  ? Math.round((state.sequence.length / darts) * 100)
+                  : 0,
             });
             state.statRecorded = true;
           }

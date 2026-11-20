@@ -617,10 +617,9 @@ button:not(:disabled):active {
 }
 
 /* Around-the-Clock-Verlauf: Nebenspalten dezent, Quote hervorgehoben. */
-.training-table .t-dir,
-.training-table .t-diff,
-.training-table .t-bull {
+.training-table .t-game {
   color: var(--muted);
+  white-space: normal; /* darf umbrechen, damit Quote ohne Wischen sichtbar bleibt */
 }
 
 .training-table td.t-quote {
@@ -1125,6 +1124,11 @@ button:not(:disabled):active {
 /* Ohne Bull: „Miss" über die ganze Breite. */
 .specials.specials-1 {
   grid-template-columns: 1fr;
+}
+
+/* Around the Clock: nur Bull + Bullseye (kein „Miss"). */
+.specials.specials-2 {
+  grid-template-columns: 1fr 1fr;
 }
 
 .num:not(:disabled):active {

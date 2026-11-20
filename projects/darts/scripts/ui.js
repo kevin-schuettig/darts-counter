@@ -346,14 +346,24 @@ const DartsUI = (() => {
             ).padStart(2, '0')}.`;
         const darts = typeof e.darts === 'number' ? e.darts : null;
         const targets = typeof e.targets === 'number' ? e.targets : null;
+        // Gespeicherte Quote bevorzugen; ältere Einträge ohne Feld rechnen.
         const quote =
-          darts && targets ? `${Math.round((targets / darts) * 100)}%` : '–';
+          typeof e.quote === 'number'
+            ? `${e.quote}%`
+            : darts && targets
+            ? `${Math.round((targets / darts) * 100)}%`
+            : '–';
+        const game = [
+          dirLabel[e.direction] || '–',
+          diffLabel[e.difficulty] || '–',
+          e.withBull ? 'Bull' : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         return `
           <tr>
             <td class="t-date">${dateLabel}</td>
-            <td class="t-dir">${dirLabel[e.direction] || '–'}</td>
-            <td class="t-diff">${diffLabel[e.difficulty] || '–'}</td>
-            <td class="t-bull">${e.withBull ? 'Ja' : 'Nein'}</td>
+            <td class="t-game">${game}</td>
             <td class="t-darts">${darts != null ? darts : '–'}</td>
             <td class="t-quote">${quote}</td>
           </tr>`;
@@ -368,9 +378,7 @@ const DartsUI = (() => {
             <thead>
               <tr>
                 <th class="t-date">Datum</th>
-                <th class="t-dir">Richtung</th>
-                <th class="t-diff">Modus</th>
-                <th class="t-bull">Bull</th>
+                <th class="t-game">Spiel</th>
                 <th class="t-darts">Würfe</th>
                 <th class="t-quote">Quote</th>
               </tr>
@@ -1186,9 +1194,7 @@ const DartsUI = (() => {
         const label = p.finished
           ? '✓'
           : DartsClock.targetLabel(target, state.difficulty);
-        const progress = p.finished
-          ? 'fertig'
-          : `${Math.min(p.targetIdx, seqLen)}/${seqLen}`;
+        const progress = p.finished ? 'fertig' : `Runde ${state.round || 1}`;
         return `
           <div class="${classes}" data-pidx="${i}">
             <div class="pname">${escapeHtml(p.name)}</div>
@@ -1253,14 +1259,10 @@ const DartsUI = (() => {
       bullIsTarget
         ? `<button type="button" class="spec spec-target" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`
         : `<button type="button" class="spec spec-x" data-special="miss" aria-label="Daneben" ${dis}>X</button>`;
-    const specials = `
-      <button type="button" class="spec" data-special="miss" ${dis}>Miss <small>0</small></button>
-      ${
-        state.withBull
-          ? bullBtn('bull', 'Bull', 25) + bullBtn('bullseye', 'Bullseye', 50)
-          : ''
-      }
-    `;
+    // Kein „Miss"-Button: Fehlwürfe laufen über die X-Felder.
+    const specials = state.withBull
+      ? bullBtn('bull', 'Bull', 25) + bullBtn('bullseye', 'Bullseye', 50)
+      : '';
 
     const undoDisabled = state.currentTurnDarts.length === 0;
     const turnOver =
@@ -1312,7 +1314,7 @@ const DartsUI = (() => {
             }
             ${numpad}
           </div>
-          <div class="specials${state.withBull ? '' : ' specials-1'}">${specials}</div>
+          ${specials ? `<div class="specials specials-2">${specials}</div>` : ''}
         `
         }
 
