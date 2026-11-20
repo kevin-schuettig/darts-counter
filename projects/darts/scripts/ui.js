@@ -1253,16 +1253,14 @@ const DartsUI = (() => {
     }).join('');
     const numpad = `<div class="numpad mode-${armedMultiplier}">${numpadButtons}</div>`;
 
-    // Bull/Bullseye nur bei „Mit Bull" – und als X, solange Bull nicht dran ist.
-    const bullIsTarget = curTarget === 'bull';
+    // Bull/Bullseye erscheinen nur, wenn Bull gerade das Ziel ist. Kein
+    // „Miss"-Button: Fehlwürfe laufen über die X-Felder im Zahlenblock.
     const bullBtn = (special, label, pts) =>
-      bullIsTarget
-        ? `<button type="button" class="spec spec-target" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`
-        : `<button type="button" class="spec spec-x" data-special="miss" aria-label="Daneben" ${dis}>X</button>`;
-    // Kein „Miss"-Button: Fehlwürfe laufen über die X-Felder.
-    const specials = state.withBull
-      ? bullBtn('bull', 'Bull', 25) + bullBtn('bullseye', 'Bullseye', 50)
-      : '';
+      `<button type="button" class="spec spec-target" data-special="${special}" ${dis}>${label} <small>${pts}</small></button>`;
+    const specials =
+      curTarget === 'bull'
+        ? bullBtn('bull', 'Bull', 25) + bullBtn('bullseye', 'Bullseye', 50)
+        : '';
 
     const undoDisabled = state.currentTurnDarts.length === 0;
     const turnOver =
